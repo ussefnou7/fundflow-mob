@@ -1,0 +1,5 @@
+# Copy to key.properties locally; this file must never contain real secrets in Git.
+storeFile=/absolute/path/to/private-upload-key.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=upload
+keyPassword=REPLACE_LOCALLY

@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Fundflow Mob</string>
+	<string>Monetizer</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>fundflow_mob</string>
+	<string>Monetizer</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -26,6 +26,18 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>يحتاج تطبيق Monetizer إلى اختيار صور الفواتير وإيصالات تحويل العهدة.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>يحتاج تطبيق Monetizer إلى تصوير الفواتير وإيصالات العمليات، وإلى الكاميرا الأمامية لصورة وجهك مع بصمة الحضور.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>يستخدم Monetizer موقعك عند تسجيل الحضور والانصراف للتأكد من وجودك في موقع العمل.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>يستخدم تطبيق Monetizer خاصية Face ID لتأمين الدخول إلى حسابك.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "564786798970",
+    "project_id": "fundflow-fa06e",
+    "storage_bucket": "fundflow-fa06e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:564786798970:android:a30018fdff9fcded10f6c3",
+        "android_client_info": {
+          "package_name": "org.smart.fundflow.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoEcAVhU39dkxGuoU4Fn5f4Pi5DcoS7lg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
