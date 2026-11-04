@@ -334,6 +334,18 @@ class HrRepository {
           )
           .toList();
 
+  /// The user's direct reports and whether each has a face enrolled.
+  Future<List<HrTeamFace>> teamFaces() async =>
+      requireList(await _get('/hr/face/team'))
+          .whereType<Map>()
+          .map((item) => HrTeamFace.fromJson(Map<String, dynamic>.from(item)))
+          .toList();
+
+  /// Deletes a report's enrolled face; they enrol again before their next face punch.
+  Future<void> resetFace(String employeeId) async {
+    await _client.postJson('/hr/face/employees/$employeeId/reset', const {});
+  }
+
   Future<List<HrMyPayslip>> payslips() async =>
       requireList(await _get('/hr/payslips/me'))
           .whereType<Map>()

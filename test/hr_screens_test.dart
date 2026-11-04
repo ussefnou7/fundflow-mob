@@ -14,6 +14,7 @@ import 'package:fundflow_mob/features/hr/presentation/attendance_log_screen.dart
 import 'package:fundflow_mob/features/hr/presentation/attendance_punch_screen.dart';
 import 'package:fundflow_mob/features/hr/presentation/employee_profile_screen.dart';
 import 'package:fundflow_mob/features/hr/presentation/hr_approvals_screen.dart';
+import 'package:fundflow_mob/features/hr/presentation/hr_dashboard_screen.dart';
 import 'package:fundflow_mob/features/hr/presentation/hr_requests_screen.dart';
 
 final _now = DateTime(2026, 10, 28, 9, 41);
@@ -527,6 +528,80 @@ void main() {
       matchesGoldenFile('goldens/hr_profile_390x844.png'),
     );
   });
+
+  testWidgets('the manager resets a report\'s face after confirming', (
+    tester,
+  ) async {
+    _setPhone(tester);
+    final repository = _DashboardRepository();
+    await tester.pumpWidget(
+      _app(
+        HrDashboardScreen(
+          repository: repository,
+          companyWideAttendance: false,
+          companyWideRequests: false,
+          canViewPayroll: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('بصمات وجه الفريق'), findsOneWidget);
+    expect(find.text('مسجلة'), findsOneWidget);
+    expect(find.text('غير مسجلة'), findsOneWidget);
+    // Only an enrolled face can be reset.
+    expect(find.text('إعادة ضبط'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('إعادة ضبط'));
+    await tester.tap(find.text('إعادة ضبط'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إلغاء'));
+    await tester.pumpAndSettle();
+    expect(repository.reset, isNull);
+
+    await tester.tap(find.text('إعادة ضبط'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'إعادة الضبط'));
+    await tester.pumpAndSettle();
+    expect(repository.reset, 'e2');
+    expect(find.text('مسجلة'), findsNothing);
+    expect(find.text('غير مسجلة'), findsNWidgets(2));
+    expect(find.text('تمت إعادة ضبط بصمة وجه كريم عادل'), findsOneWidget);
+  });
+}
+
+class _DashboardRepository extends _FakeHrRepository {
+  String? reset;
+
+  @override
+  Future<List<HrTimesheetDay>> teamTimesheet({
+    required DateTime from,
+    required DateTime to,
+    bool companyWide = false,
+  }) async => const [];
+
+  @override
+  Future<List<HrRequest>> teamRequests({bool companyWide = false}) async =>
+      const [];
+
+  @override
+  Future<HrApprovalSummary> approvalSummary() async =>
+      const HrApprovalSummary(decides: true);
+
+  @override
+  Future<List<HrTeamFace>> teamFaces() async => [
+    HrTeamFace(
+      employee: const HrRef(id: 'e2', code: 'EMP-021', name: 'كريم عادل'),
+      enrolled: reset != 'e2',
+      enrolledAt: reset == 'e2' ? null : DateTime(2026, 10, 20, 9),
+    ),
+    const HrTeamFace(
+      employee: HrRef(id: 'e3', code: 'EMP-033', name: 'محمود سعيد'),
+      enrolled: false,
+    ),
+  ];
+
+  @override
+  Future<void> resetFace(String employeeId) async => reset = employeeId;
 }
 
 Widget _app(Widget screen) => MaterialApp(

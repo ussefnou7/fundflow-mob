@@ -32,6 +32,8 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
   List<HrTimesheetDay> _today = const [];
   List<HrRequest> _requests = const [];
   List<HrMissingBasic> _missing = const [];
+  List<HrTeamFace> _faces = const [];
+  String? _resetting;
   HrApprovalSummary _approvals = const HrApprovalSummary();
   bool _loading = true;
   bool _missingOpen = false;
@@ -58,6 +60,8 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
         ),
         widget.repository.teamRequests(companyWide: widget.companyWideRequests),
         widget.repository.approvalSummary(),
+        // Someone without an employee record manages no one: no faces, not an error.
+        widget.repository.teamFaces().catchError((_) => const <HrTeamFace>[]),
         if (widget.canViewPayroll) widget.repository.missingBasic(),
       ]);
       if (!mounted) return;
@@ -65,14 +69,59 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
         _today = results[0] as List<HrTimesheetDay>;
         _requests = results[1] as List<HrRequest>;
         _approvals = results[2] as HrApprovalSummary;
+        _faces = results[3] as List<HrTeamFace>;
         _missing = widget.canViewPayroll
-            ? results[3] as List<HrMissingBasic>
+            ? results[4] as List<HrMissingBasic>
             : const [];
       });
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _resetFace(HrTeamFace face) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('إعادة ضبط بصمة الوجه'),
+        content: Text(
+          'سيتم حذف بصمة وجه ${face.employee.name}، '
+          'وسيُطلب منه تسجيلها من جديد عند البصمة القادمة.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('إعادة الضبط'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _resetting = face.employee.id);
+    try {
+      await widget.repository.resetFace(face.employee.id);
+      final faces = await widget.repository.teamFaces();
+      if (!mounted) return;
+      setState(() => _faces = faces);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تمت إعادة ضبط بصمة وجه ${face.employee.name}'),
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _resetting = null);
     }
   }
 
@@ -132,6 +181,14 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
               ),
             ],
           ),
+          if (_faces.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _TeamFaces(
+              faces: _faces,
+              resetting: _resetting,
+              onReset: _resetFace,
+            ),
+          ],
           if (widget.canViewPayroll) ...[
             const SizedBox(height: 12),
             _MissingBasicList(
@@ -316,6 +373,102 @@ class _CompactStat extends StatelessWidget {
             '$value',
             style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The manager's direct reports and their enrolled faces, each resettable.
+class _TeamFaces extends StatelessWidget {
+  const _TeamFaces({
+    required this.faces,
+    required this.resetting,
+    required this.onReset,
+  });
+
+  final List<HrTeamFace> faces;
+  final String? resetting;
+  final ValueChanged<HrTeamFace> onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: tokens.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(LucideIcons.scanFace, size: 19),
+              SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'بصمات وجه الفريق',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'إعادة الضبط تطلب من الموظف تسجيل وجهه من جديد',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF6C7B78)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Divider(),
+          for (final face in faces)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(
+                radius: 17,
+                backgroundColor: tokens.wash,
+                child: Icon(
+                  LucideIcons.userRound,
+                  size: 16,
+                  color: tokens.brand,
+                ),
+              ),
+              title: Text(
+                face.employee.name,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              subtitle: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: AppTag(
+                  face.enrolled ? 'مسجلة' : 'غير مسجلة',
+                  tone: face.enrolled ? AppTone.success : AppTone.neutral,
+                ),
+              ),
+              trailing: !face.enrolled
+                  ? null
+                  : resetting == face.employee.id
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : TextButton.icon(
+                      onPressed: resetting == null ? () => onReset(face) : null,
+                      icon: const Icon(LucideIcons.rotateCcw, size: 16),
+                      label: const Text('إعادة ضبط'),
+                    ),
+            ),
         ],
       ),
     );

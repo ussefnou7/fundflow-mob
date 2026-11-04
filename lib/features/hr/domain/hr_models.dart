@@ -137,6 +137,27 @@ class HrFaceStatus {
   final int photos;
 }
 
+/// A direct report's face as their manager sees it: enrolled or not.
+class HrTeamFace {
+  const HrTeamFace({
+    required this.employee,
+    required this.enrolled,
+    this.enrolledAt,
+  });
+
+  factory HrTeamFace.fromJson(Map<String, dynamic> json) => HrTeamFace(
+    employee:
+        HrRef.from(json['employee']) ??
+        const HrRef(id: '', code: '', name: ''),
+    enrolled: json['enrolled'] == true,
+    enrolledAt: _time(json['enrolledAt']),
+  );
+
+  final HrRef employee;
+  final bool enrolled;
+  final DateTime? enrolledAt;
+}
+
 /// An employee asking to bind a phone, for their direct manager (or HR).
 class HrDeviceRequest {
   const HrDeviceRequest({
