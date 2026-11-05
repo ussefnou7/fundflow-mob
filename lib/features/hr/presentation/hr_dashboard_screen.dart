@@ -110,9 +110,7 @@ class _HrDashboardScreenState extends State<HrDashboardScreen> {
       if (!mounted) return;
       setState(() => _faces = faces);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تمت إعادة ضبط بصمة وجه ${face.employee.name}'),
-        ),
+        SnackBar(content: Text('تمت إعادة ضبط بصمة وجه ${face.employee.name}')),
       );
     } catch (error) {
       if (mounted) {

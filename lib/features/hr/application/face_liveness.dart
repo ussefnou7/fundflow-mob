@@ -1,18 +1,33 @@
-import 'dart:math' as math;
-
-/// The photos the camera took and whether the live check passed before them.
+/// The photos the camera took, one per pose, and whether the live check
+/// passed before them.
 class FaceCapture {
-  const FaceCapture({required this.paths, required this.livenessOk})
-    : problem = null;
+  const FaceCapture({
+    required this.paths,
+    required this.livenessOk,
+    this.poses = const [],
+  }) : problem = null;
 
   /// The phone has no usable camera, or the employee did not allow it.
   const FaceCapture.unavailable(this.problem)
     : paths = const [],
+      poses = const [],
       livenessOk = false;
 
   final List<String> paths;
   final bool livenessOk;
-  String? get path => paths.isEmpty ? null : paths.first;
+
+  /// The pose of each photo in [paths], in the same order.
+  final List<FacePose> poses;
+
+  /// The photo of [pose], or null when none was taken.
+  String? of(FacePose pose) {
+    final index = poses.indexOf(pose);
+    return index < 0 || index >= paths.length ? null : paths[index];
+  }
+
+  /// The front photo, matched against the employee's face.
+  String? get path =>
+      of(FacePose.front) ?? (paths.isEmpty ? null : paths.first);
 
   /// A reason in Arabic when no photo was taken.
   final String? problem;
@@ -55,12 +70,13 @@ class FaceFrame {
   final Duration at;
 }
 
-/// The one live action a punch asks for, drawn at random.
-enum FaceChallenge { blink, turnRight, turnLeft }
-
-/// A photo the flow takes: the front for a punch; front, right and left for
-/// enrolment, in that order.
+/// A photo the flow takes: for a punch, the head turned the way the server
+/// asked, then the front; for enrolment the front, the right and the left.
 enum FacePose { front, right, left }
+
+/// The pose that answers the server's challenge (`TURN_RIGHT`, `TURN_LEFT`).
+FacePose poseFor(String action) =>
+    action == 'TURN_RIGHT' ? FacePose.right : FacePose.left;
 
 /// Where the flow stands, for the screen to prompt and to shoot.
 class FaceStep {
@@ -82,27 +98,22 @@ class FaceStep {
   final bool aligned;
 }
 
-/// Liveness on the phone (§8.1), one step at a time so every prompt can be
-/// read and followed:
+/// The camera side of the live check (§8.1), one step at a time so every
+/// prompt can be read and followed. The server draws a punch's action and
+/// checks its photo; the phone only makes sure it gets the right photos:
 ///
-/// * A punch asks for one action drawn at random (a blink, or a turn to the
-///   right or the left), then the face held to the front for its photo. The
-///   same face has to stay in view from the action to the photo.
-/// * Enrolment takes the front, then the right, then the left; turning to each
-///   side on request is the live proof. A face leaving the frame for a moment
-///   only restarts the pose in hand, as the server checks that every photo is
-///   the same person.
+/// * A punch photographs the head turned the way the server asked, then the
+///   front. It is [strict]: if the face leaves the frame for more than a
+///   moment, or another face appears, it starts over from the first photo.
+/// * Enrolment takes the front, then the right, then the left. A face leaving
+///   the frame for a moment only restarts the pose in hand, as the server
+///   checks that every photo is the same person.
 /// * A photo is taken only once its pose has held for [hold] inside the frame,
 ///   and a prompt stays at least [promptFor] before another replaces it.
 ///
 /// The phone never matches the face; the server does.
 class FaceLiveness {
-  FaceLiveness({required this.poses, math.Random? random})
-    : challenge = poses.length == 1
-          ? FaceChallenge.values[(random ?? math.Random()).nextInt(
-              FaceChallenge.values.length,
-            )]
-          : null;
+  FaceLiveness({required this.poses, this.strict = false});
 
   /// The sign of [FaceFrame.yaw] when the employee turns to their own right.
   /// ML Kit's yaw is positive toward the right of the processed image, and the
@@ -113,13 +124,11 @@ class FaceLiveness {
   static const hold = Duration(milliseconds: 500);
   static const promptFor = Duration(milliseconds: 700);
 
-  /// How long the face may be out of view before a punch's action is asked
-  /// again: long enough for a dropped frame, too short to swap faces.
+  /// How long the face may be out of view before a [strict] capture starts
+  /// over: long enough for a dropped frame, too short to swap faces.
   static const _punchGap = Duration(milliseconds: 300);
 
-  static const _closed = .3;
   static const _open = .7;
-  static const _turned = 20.0;
   static const _frontal = 10.0;
   static const _sideMin = 15.0;
   static const _sideMax = 40.0;
@@ -127,22 +136,19 @@ class FaceLiveness {
   static const _maxWidth = .8;
   static const _offCentre = .15;
 
-  /// The photos to take, in order: one for a punch, three for enrolment.
+  /// The photos to take, in order: two for a punch, three for enrolment.
   final List<FacePose> poses;
 
-  /// The punch's action; null for enrolment.
-  final FaceChallenge? challenge;
+  /// Every photo from one face in one go (a punch).
+  final bool strict;
 
-  bool _challengeDone = false;
   int _pose = 0;
   int? _trackingId;
-  bool _eyesClosed = false;
   Duration? _readySince;
   Duration? _lostSince;
   String? _shown;
   Duration _shownAt = Duration.zero;
 
-  bool get passed => challenge == null || _challengeDone;
   bool get done => _pose == poses.length;
 
   /// Photos taken so far.
@@ -153,10 +159,8 @@ class FaceLiveness {
 
   /// Starts over, as after a failed attempt.
   void reset() {
-    _challengeDone = false;
     _pose = 0;
     _trackingId = null;
-    _eyesClosed = false;
     _readySince = null;
     _lostSince = null;
     _shown = null;
@@ -166,21 +170,20 @@ class FaceLiveness {
     if (done) return const FaceStep('تم', done: true);
     if (frame.faces != 1) {
       _readySince = null;
-      _eyesClosed = false;
       if (frame.faces > 1) {
-        _restartPunchAction();
+        _startOver();
         return FaceStep(_say('يجب أن يظهر وجه واحد فقط', frame.at));
       }
       _lostSince ??= frame.at;
-      if (frame.at - _lostSince! > _punchGap) _restartPunchAction();
+      if (frame.at - _lostSince! > _punchGap) _startOver();
       return FaceStep(_say('ضع وجهك داخل الإطار', frame.at));
     }
     _lostSince = null;
-    // Another face took the place of the one that did the action.
+    // Another face took the place of the one already photographed.
     if (_trackingId != null &&
         frame.trackingId != null &&
         frame.trackingId != _trackingId) {
-      _restartPunchAction();
+      _startOver();
       _readySince = null;
     }
     if (frame.trackingId != null) _trackingId = frame.trackingId;
@@ -188,14 +191,6 @@ class FaceLiveness {
     if (frame.width < _minWidth) {
       _readySince = null;
       return FaceStep(_say('قرّب الهاتف من وجهك', frame.at));
-    }
-
-    if (!passed) {
-      if (_act(frame)) {
-        _challengeDone = true;
-        return FaceStep(_say(prompt, frame.at, now: true));
-      }
-      return FaceStep(_say(prompt, frame.at));
     }
 
     final aligned = _aligned(frame);
@@ -240,13 +235,6 @@ class FaceLiveness {
   /// What the employee is asked to do next, the face in place.
   String get prompt {
     if (done) return 'تم';
-    if (!passed) {
-      return switch (challenge!) {
-        FaceChallenge.blink => 'رمّش بعينيك',
-        FaceChallenge.turnRight => 'لف وجهك ناحية اليمين',
-        FaceChallenge.turnLeft => 'لف وجهك ناحية الشمال',
-      };
-    }
     return switch (poses[_pose]) {
       FacePose.front => 'انظر إلى الكاميرا مباشرة',
       FacePose.right => 'لف وجهك قليلًا ناحية اليمين',
@@ -274,21 +262,6 @@ class FaceLiveness {
     return fits ? null : 'الصورة لم تلتقط الوضعية المطلوبة؛ أعدها';
   }
 
-  bool _act(FaceFrame frame) {
-    switch (challenge!) {
-      case FaceChallenge.blink:
-        final left = frame.leftEyeOpen;
-        final right = frame.rightEyeOpen;
-        if (left == null || right == null) return false;
-        if (left < _closed && right < _closed) _eyesClosed = true;
-        return _eyesClosed && left > _open && right > _open;
-      case FaceChallenge.turnRight:
-        return (frame.yaw ?? 0) * rightYaw > _turned;
-      case FaceChallenge.turnLeft:
-        return (frame.yaw ?? 0) * -rightYaw > _turned;
-    }
-  }
-
   static bool _inPose(FacePose pose, FaceFrame frame) {
     final yaw = frame.yaw ?? 0;
     return switch (pose) {
@@ -311,12 +284,12 @@ class FaceLiveness {
       (frame.centerX - .5).abs() <= _offCentre &&
       (frame.centerY - .5).abs() <= _offCentre;
 
-  /// A punch's action counts only for the face that stays to be photographed.
-  void _restartPunchAction() {
-    if (challenge == null || !_challengeDone) return;
-    _challengeDone = false;
-    _eyesClosed = false;
+  /// A strict capture keeps only photos of one face taken in one go.
+  void _startOver() {
+    if (!strict || _pose == 0) return;
+    _pose = 0;
     _readySince = null;
+    _shown = null;
   }
 
   /// [text] once the current prompt has stood [promptFor], or at once when the

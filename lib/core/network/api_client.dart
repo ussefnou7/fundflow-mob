@@ -236,6 +236,40 @@ class ApiClient {
     );
   }
 
+  /// A JSON part beside one file per named part, as a face punch sends its
+  /// front and action photos.
+  Future<Response<dynamic>> postMultipartParts(
+    String path, {
+    required String jsonPartName,
+    required Map<String, dynamic> json,
+    required Map<String, String> files,
+  }) async {
+    final csrf = await _csrfToken();
+    final form = FormData.fromMap({
+      jsonPartName: MultipartFile.fromString(
+        jsonEncode(json),
+        contentType: DioMediaType.parse(Headers.jsonContentType),
+      ),
+      for (final file in files.entries)
+        file.key: await MultipartFile.fromFile(file.value),
+    });
+    return _write(
+      path,
+      json,
+      (receiptHeaders) => _networkRequest(
+        () => dio.post<dynamic>(
+          '/api$path',
+          data: form,
+          options: Options(
+            sendTimeout: const Duration(minutes: 5),
+            headers: {csrf.headerName: csrf.token, ...receiptHeaders},
+          ),
+        ),
+      ),
+      files: files.values.toList(),
+    );
+  }
+
   Future<Response<dynamic>> postMultipartFiles(
     String path, {
     required String jsonPartName,

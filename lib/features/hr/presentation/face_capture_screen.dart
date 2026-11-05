@@ -46,7 +46,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       minFaceSize: .2,
     ),
   );
-  late final _liveness = FaceLiveness(poses: widget.poses);
+  late final _liveness = FaceLiveness(poses: widget.poses, strict: !_enrolling);
   final _clock = Stopwatch();
   final _paths = <String>[];
   CameraController? _camera;
@@ -58,7 +58,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   bool _working = false;
   bool _shooting = false;
 
-  bool get _enrolling => widget.poses.length > 1;
+  bool get _enrolling => widget.poses.length > 2;
 
   /// Three poses with a retake or two take longer than one action and a photo.
   Duration get _timeLimit =>
@@ -160,6 +160,13 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
           height: math.max(image.width, image.height).toDouble(),
         ),
       );
+      // A strict capture that started over drops the photos it had taken.
+      if (_liveness.taken < _paths.length) {
+        for (final path in _paths.sublist(_liveness.taken)) {
+          unawaited(File(path).delete().then((_) {}, onError: (_) {}));
+        }
+        _paths.removeRange(_liveness.taken, _paths.length);
+      }
       if (step.prompt != _prompt || step.aligned != _aligned) {
         setState(() {
           _prompt = step.prompt;
@@ -226,7 +233,10 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       if (!mounted) return;
       if (_liveness.done) {
         _deadline?.cancel();
-        Navigator.pop(context, FaceCapture(paths: _paths, livenessOk: true));
+        Navigator.pop(
+          context,
+          FaceCapture(paths: _paths, livenessOk: true, poses: widget.poses),
+        );
         return;
       }
       setState(() {
@@ -396,7 +406,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                         Text(
                           _enrolling
                               ? 'الصورة ${math.min(_liveness.taken + 1, widget.poses.length)} من ${widget.poses.length} · تُطابق على الخادم فقط'
-                              : 'تُرسل صورة واحدة مع البصمة وتُطابق على الخادم',
+                              : 'تُرسل الصورتان مع البصمة ويتحقق منهما الخادم',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Color(0xB8FFFFFF),

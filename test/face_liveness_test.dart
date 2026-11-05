@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fundflow_mob/features/hr/application/face_liveness.dart';
 
@@ -26,16 +24,11 @@ FaceFrame _face(
 
 FaceFrame _none(int ms) => FaceFrame(faces: 0, at: Duration(milliseconds: ms));
 
-/// A punch flow whose action is [challenge].
-FaceLiveness _punch(FaceChallenge challenge) {
-  for (var seed = 0; ; seed++) {
-    final liveness = FaceLiveness(
-      poses: const [FacePose.front],
-      random: math.Random(seed),
-    );
-    if (liveness.challenge == challenge) return liveness;
-  }
-}
+/// A punch whose server action is a turn to the employee's [right] or left.
+FaceLiveness _punch({bool right = true}) => FaceLiveness(
+  poses: [right ? FacePose.right : FacePose.left, FacePose.front],
+  strict: true,
+);
 
 /// Holds [frame]'s pose from [from] long enough to be photographed.
 FacePose? _hold(FaceLiveness liveness, int from, {double yaw = 0}) {
@@ -47,78 +40,50 @@ FacePose? _hold(FaceLiveness liveness, int from, {double yaw = 0}) {
 }
 
 void main() {
-  test('a punch asks for one action drawn at random', () {
-    final drawn = {
-      for (var seed = 0; seed < 40; seed++)
-        FaceLiveness(
-          poses: const [FacePose.front],
-          random: math.Random(seed),
-        ).challenge,
-    };
-    expect(drawn, FaceChallenge.values.toSet());
-    // Enrolment has no action of its own: turning to each side is the proof.
+  test('the action the server drew is the first photo, the front the next', () {
+    expect(poseFor('TURN_RIGHT'), FacePose.right);
+    expect(poseFor('TURN_LEFT'), FacePose.left);
+    final liveness = _punch();
+    expect(liveness.prompt, 'لف وجهك قليلًا ناحية اليمين');
+    // The other side is not the action.
+    expect(_hold(liveness, 0, yaw: -_right * 25), isNull);
+    expect(_hold(liveness, 1000, yaw: _right * 25), FacePose.right);
+    liveness.shot(FacePose.right);
     expect(
-      FaceLiveness(
-        poses: const [FacePose.front, FacePose.right, FacePose.left],
-      ).challenge,
-      isNull,
+      liveness.see(_face(2000, yaw: _right * 25)).prompt,
+      'انظر إلى الكاميرا مباشرة',
     );
-  });
-
-  test('a blink, then the face held to the front, takes the photo', () {
-    final liveness = _punch(FaceChallenge.blink);
-    expect(liveness.see(_face(0)).prompt, 'رمّش بعينيك');
-    // Open eyes alone never count as a blink.
-    for (var ms = 100; ms < 1000; ms += 100) {
-      expect(liveness.see(_face(ms)).shoot, isNull);
-    }
-    expect(liveness.passed, isFalse);
-    liveness.see(_face(1000, eyes: .05));
-    final step = liveness.see(_face(1100));
-    expect(liveness.passed, isTrue);
-    expect(step.prompt, 'انظر إلى الكاميرا مباشرة');
     // Not on the first frame: the pose has to hold half a second.
-    expect(liveness.see(_face(1200)).shoot, isNull);
-    expect(liveness.see(_face(1500)).shoot, isNull);
-    expect(liveness.see(_face(1700)).shoot, FacePose.front);
+    expect(liveness.see(_face(2800)).shoot, isNull);
+    expect(liveness.see(_face(3100)).shoot, isNull);
+    expect(liveness.see(_face(3300)).shoot, FacePose.front);
     liveness.shot(FacePose.front);
     expect(liveness.done, isTrue);
   });
 
-  test('a turn counts only toward the side asked for', () {
-    final liveness = _punch(FaceChallenge.turnRight);
-    expect(liveness.see(_face(0)).prompt, 'لف وجهك ناحية اليمين');
-    liveness.see(_face(100, yaw: -_right * 30));
-    expect(liveness.passed, isFalse);
-    liveness.see(_face(200, yaw: _right * 30));
-    expect(liveness.passed, isTrue);
-    // Still turned: no photo until the face comes back to the front.
-    expect(_hold(liveness, 300, yaw: _right * 30), isNull);
-    expect(_hold(liveness, 1000), FacePose.front);
+  test('another face before the front photo starts the punch over', () {
+    final liveness = _punch(right: false);
+    expect(_hold(liveness, 0, yaw: -_right * 25), FacePose.left);
+    liveness.shot(FacePose.left);
+    expect(liveness.taken, 1);
+    liveness.see(_face(1000, id: 2));
+    expect(liveness.taken, 0);
+    expect(liveness.prompt, 'لف وجهك قليلًا ناحية الشمال');
   });
 
-  test('another face before the photo asks for the action again', () {
-    final liveness = _punch(FaceChallenge.turnLeft);
-    liveness.see(_face(0, yaw: -_right * 30));
-    expect(liveness.passed, isTrue);
-    liveness.see(_face(100, id: 2));
-    expect(liveness.passed, isFalse);
-
-    liveness.see(_face(200, id: 2, yaw: -_right * 30));
-    expect(liveness.passed, isTrue);
-    // Out of view long enough to swap faces: the action again.
-    liveness.see(_none(300));
-    liveness.see(_none(700));
-    liveness.see(_face(800, id: 2));
-    expect(liveness.passed, isFalse);
-  });
-
-  test('a dropped frame does not undo the punch action', () {
-    final liveness = _punch(FaceChallenge.turnRight);
-    liveness.see(_face(0, yaw: _right * 30));
-    liveness.see(_none(100));
-    liveness.see(_face(200));
-    expect(liveness.passed, isTrue);
+  test('a punch face out of view for more than a moment starts over', () {
+    final liveness = _punch();
+    expect(_hold(liveness, 0, yaw: _right * 25), FacePose.right);
+    liveness.shot(FacePose.right);
+    // A dropped frame is nothing.
+    liveness.see(_none(1000));
+    liveness.see(_face(1100));
+    expect(liveness.taken, 1);
+    // Long enough to swap faces is.
+    liveness.see(_none(1200));
+    liveness.see(_none(1600));
+    liveness.see(_face(1700));
+    expect(liveness.taken, 0);
   });
 
   test('enrolment takes the front, then the right, then the left', () {

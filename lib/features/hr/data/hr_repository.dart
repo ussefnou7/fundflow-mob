@@ -19,6 +19,8 @@ class PunchInput {
     this.note,
     this.selfiePath,
     this.livenessOk,
+    this.actionPath,
+    this.challengeId,
   });
 
   final String punchType;
@@ -36,7 +38,16 @@ class PunchInput {
   /// Whether that live check passed; sent only with a photo.
   final bool? livenessOk;
 
-  PunchInput withSelfie(String? path, {required bool livenessOk}) => PunchInput(
+  /// The photo of the server's challenge, and the challenge it answers.
+  final String? actionPath;
+  final String? challengeId;
+
+  PunchInput withSelfie(
+    String? path, {
+    required bool livenessOk,
+    String? actionPath,
+    String? challengeId,
+  }) => PunchInput(
     punchType: punchType,
     installationId: installationId,
     deviceTime: deviceTime,
@@ -47,6 +58,8 @@ class PunchInput {
     note: note,
     selfiePath: path,
     livenessOk: path == null ? null : livenessOk,
+    actionPath: path == null ? null : actionPath,
+    challengeId: path == null ? null : challengeId,
   );
 }
 
@@ -126,8 +139,9 @@ class HrRepository {
     return today;
   }
 
-  /// JSON alone, or multipart with the selfie: a `punch` part holding the
-  /// same JSON and a `selfie` part.
+  /// JSON alone, or multipart with the photos: a `punch` part holding the
+  /// same JSON, a `selfie` part and, answering the server's challenge, an
+  /// `action` part.
   Future<HrPunch> punch(PunchInput input) async {
     final body = {
       'punchType': input.punchType,
@@ -139,22 +153,30 @@ class HrRepository {
       'mockLocation': input.mockLocation,
       'note': input.note?.trim().isEmpty == true ? null : input.note?.trim(),
       'livenessOk': input.livenessOk,
+      'challengeId': input.challengeId,
     };
     final selfie = input.selfiePath;
     return HrPunch.fromJson(
       requireMap(
         selfie == null
             ? await _client.postJson('/hr/attendance/punch', body)
-            : await _client.postMultipart(
+            : await _client.postMultipartParts(
                 '/hr/attendance/punch',
                 jsonPartName: 'punch',
                 json: body,
-                filePartName: 'selfie',
-                filePath: selfie,
+                files: {
+                  'selfie': selfie,
+                  if (input.actionPath != null) 'action': input.actionPath!,
+                },
               ),
       ),
     );
   }
+
+  /// The action the next face punch shows, drawn by the server.
+  Future<HrFaceChallenge> faceChallenge() async => HrFaceChallenge.fromJson(
+    requireMap(await _client.postJson('/hr/face/challenge', const {})),
+  );
 
   /// Enrols the employee's face once, from their approved phone.
   Future<HrFaceStatus> enrolFace({

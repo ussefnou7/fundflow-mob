@@ -11,6 +11,7 @@ import '../../../core/widgets/app_refresh_page.dart';
 import '../../../core/widgets/app_sheet.dart';
 import '../../../core/widgets/app_table.dart';
 import '../../custody/presentation/custody_widgets.dart';
+import '../application/face_liveness.dart';
 import '../application/punch_sensors.dart';
 import '../data/hr_repository.dart';
 import '../domain/hr_models.dart';
@@ -164,14 +165,28 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
         note: note,
       );
       if (current.takesSelfie) {
+        // The server draws the action and checks its photo beside the front one.
+        final challenge = current.faceAvailable
+            ? await widget.repository.faceChallenge()
+            : null;
         if (!mounted) return;
-        final face = await widget.sensors.captureFace(context);
+        final face = await widget.sensors.captureFace(
+          context,
+          action: challenge?.action,
+        );
         if (face == null || !mounted) return;
         if (face.problem != null) throw StateError(face.problem!);
         if (face.path == null || !face.livenessOk) {
           throw StateError('يجب إكمال التحقق من الوجه لتسجيل البصمة');
         }
-        input = input.withSelfie(face.path, livenessOk: face.livenessOk);
+        input = input.withSelfie(
+          face.path,
+          livenessOk: face.livenessOk,
+          actionPath: challenge == null
+              ? null
+              : face.of(poseFor(challenge.action)),
+          challengeId: challenge?.id,
+        );
       }
       // Busy only once the employee has committed, never behind the sheet.
       setState(() => _punching = true);

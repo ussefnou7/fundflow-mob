@@ -207,7 +207,7 @@ void main() {
     expect(repository.decidedPunch, ('p7', false, 'ليس جهازك'));
   });
 
-  testWidgets('an enrolled employee punches with a live selfie', (
+  testWidgets('a face punch shows the server\'s action and sends both photos', (
     tester,
   ) async {
     _setPhone(tester);
@@ -218,7 +218,11 @@ void main() {
     );
     final sensors = _FakeSensors(
       const PunchFix(lat: 30.0001, lng: 31.0001),
-      face: const FaceCapture(paths: ['/tmp/selfie.jpg'], livenessOk: true),
+      face: const FaceCapture(
+        paths: ['/tmp/turned.jpg', '/tmp/selfie.jpg'],
+        livenessOk: true,
+        poses: [FacePose.left, FacePose.front],
+      ),
     );
     await tester.pumpWidget(
       _app(AttendancePunchScreen(repository: repository, sensors: sensors)),
@@ -227,7 +231,11 @@ void main() {
     expect(find.text('تسجيل الوجه'), findsNothing);
     await _holdToPunch(tester, find.text('تسجيل الانصراف'));
     expect(sensors.asked, [false]);
+    // The camera was asked for the action the server drew.
+    expect(sensors.actions, ['TURN_LEFT']);
     expect(repository.punched?.selfiePath, '/tmp/selfie.jpg');
+    expect(repository.punched?.actionPath, '/tmp/turned.jpg');
+    expect(repository.punched?.challengeId, 'c1');
     expect(repository.punched?.livenessOk, isTrue);
   });
 
@@ -269,28 +277,29 @@ void main() {
     expect(repository.punched, isNull);
   });
 
-  testWidgets('without face service on the server the employee is told plainly', (
-    tester,
-  ) async {
-    _setPhone(tester);
-    final repository = _FakeHrRepository(
-      faceAvailable: false,
-      selfieRequired: true,
-      faceEnrolled: false,
-    );
-    final sensors = _FakeSensors(const PunchFix(lat: 30.0001, lng: 31.0001));
-    await tester.pumpWidget(
-      _app(AttendancePunchScreen(repository: repository, sensors: sensors)),
-    );
-    await tester.pumpAndSettle();
-    await _holdToPunch(tester, find.text('تسجيل الانصراف'));
-    expect(repository.punched, isNull);
-    expect(
-      find.text('خدمة بصمة الوجه غير متاحة حاليًا؛ تواصل مع الموارد البشرية'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('Bad state'), findsNothing);
-  });
+  testWidgets(
+    'without face service on the server the employee is told plainly',
+    (tester) async {
+      _setPhone(tester);
+      final repository = _FakeHrRepository(
+        faceAvailable: false,
+        selfieRequired: true,
+        faceEnrolled: false,
+      );
+      final sensors = _FakeSensors(const PunchFix(lat: 30.0001, lng: 31.0001));
+      await tester.pumpWidget(
+        _app(AttendancePunchScreen(repository: repository, sensors: sensors)),
+      );
+      await tester.pumpAndSettle();
+      await _holdToPunch(tester, find.text('تسجيل الانصراف'));
+      expect(repository.punched, isNull);
+      expect(
+        find.text('خدمة بصمة الوجه غير متاحة حاليًا؛ تواصل مع الموارد البشرية'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Bad state'), findsNothing);
+    },
+  );
 
   for (final enrolled in [false, true]) {
     testWidgets(
@@ -658,6 +667,7 @@ class _FakeSensors implements PunchSensors {
   final PunchFix fix;
   final FaceCapture? face;
   final asked = <bool>[];
+  final actions = <String?>[];
 
   @override
   String get installationId => 'install-1';
@@ -669,8 +679,10 @@ class _FakeSensors implements PunchSensors {
   Future<FaceCapture?> captureFace(
     BuildContext context, {
     bool enrol = false,
+    String? action,
   }) async {
     asked.add(enrol);
+    if (!enrol) actions.add(action);
     return face;
   }
 }
@@ -826,6 +838,10 @@ class _FakeHrRepository extends HrRepository {
     firstIn: _punches.isEmpty ? null : _punches.first.punchedAt,
     elapsedMinutes: _punches.isEmpty ? null : 97,
   );
+
+  @override
+  Future<HrFaceChallenge> faceChallenge() async =>
+      const HrFaceChallenge(id: 'c1', action: 'TURN_LEFT');
 
   @override
   Future<HrPunch> punch(PunchInput input) async {

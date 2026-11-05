@@ -137,6 +137,23 @@ class HrFaceStatus {
   final int photos;
 }
 
+/// The action the server asks of the next face punch; its id goes back with
+/// the punch.
+class HrFaceChallenge {
+  const HrFaceChallenge({required this.id, required this.action});
+
+  factory HrFaceChallenge.fromJson(Map<String, dynamic> json) =>
+      HrFaceChallenge(
+        id: json['id']?.toString() ?? '',
+        action: json['action']?.toString() ?? '',
+      );
+
+  final String id;
+
+  /// `TURN_RIGHT` or `TURN_LEFT`.
+  final String action;
+}
+
 /// A direct report's face as their manager sees it: enrolled or not.
 class HrTeamFace {
   const HrTeamFace({
@@ -147,8 +164,7 @@ class HrTeamFace {
 
   factory HrTeamFace.fromJson(Map<String, dynamic> json) => HrTeamFace(
     employee:
-        HrRef.from(json['employee']) ??
-        const HrRef(id: '', code: '', name: ''),
+        HrRef.from(json['employee']) ?? const HrRef(id: '', code: '', name: ''),
     enrolled: json['enrolled'] == true,
     enrolledAt: _time(json['enrolledAt']),
   );

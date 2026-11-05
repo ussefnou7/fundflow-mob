@@ -38,9 +38,14 @@ abstract class PunchSensors {
   String get installationId;
   Future<PunchFix> locate();
 
-  /// The live check and its photos: one for a punch, three to enrol. Null
-  /// when the employee closed the camera.
-  Future<FaceCapture?> captureFace(BuildContext context, {bool enrol = false});
+  /// The live check and its photos: for a punch the server's [action]
+  /// (`TURN_RIGHT`, `TURN_LEFT`) then the front, three to enrol. Null when the
+  /// employee closed the camera.
+  Future<FaceCapture?> captureFace(
+    BuildContext context, {
+    bool enrol = false,
+    String? action,
+  });
 }
 
 class DevicePunchSensors implements PunchSensors {
@@ -54,11 +59,12 @@ class DevicePunchSensors implements PunchSensors {
   Future<FaceCapture?> captureFace(
     BuildContext context, {
     bool enrol = false,
+    String? action,
   }) => FaceCaptureScreen.open(
     context,
     poses: enrol
         ? const [FacePose.front, FacePose.right, FacePose.left]
-        : const [FacePose.front],
+        : [if (action != null) poseFor(action), FacePose.front],
   );
 
   @override
