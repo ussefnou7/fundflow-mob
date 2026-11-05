@@ -12,8 +12,10 @@ import '../../../core/theme/app_theme.dart';
 import '../application/face_liveness.dart';
 
 /// «التحقق من الوجه» for a punch, «تسجيل الوجه» for enrolment: the front
-/// camera, a live check, then the photos. Pops with a [FaceCapture], or null
-/// when the employee closed it.
+/// camera behind an oval frame, one step at a time ([FaceLiveness]). Each
+/// photo is checked on the phone as soon as it is taken and retaken on the
+/// spot when it is not clear, so the whole capture ends in one go. Pops with a
+/// [FaceCapture], or null when the employee closed it.
 class FaceCaptureScreen extends StatefulWidget {
   const FaceCaptureScreen({super.key, required this.poses});
 
@@ -34,7 +36,8 @@ class FaceCaptureScreen extends StatefulWidget {
 }
 
 class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
-  static const _timeLimit = Duration(seconds: 40);
+  /// How long the ✓ after a good photo, or the reason a photo is retaken, stays.
+  static const _pause = Duration(milliseconds: 800);
 
   final _detector = FaceDetector(
     options: FaceDetectorOptions(
@@ -44,15 +47,22 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     ),
   );
   late final _liveness = FaceLiveness(poses: widget.poses);
+  final _clock = Stopwatch();
   final _paths = <String>[];
   CameraController? _camera;
   Timer? _deadline;
   String _prompt = 'جارٍ تشغيل الكاميرا…';
   String? _failure;
+  bool _aligned = false;
+  bool _confirmed = false;
   bool _working = false;
   bool _shooting = false;
 
   bool get _enrolling => widget.poses.length > 1;
+
+  /// Three poses with a retake or two take longer than one action and a photo.
+  Duration get _timeLimit =>
+      _enrolling ? const Duration(seconds: 90) : const Duration(seconds: 40);
 
   @override
   void initState() {
@@ -129,6 +139,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     _deadline = Timer(_timeLimit, () {
       if (mounted && !_liveness.done) _fail('انتهى الوقت قبل اكتمال التحقق');
     });
+    _clock.start();
     await camera.startImageStream(_frame);
   }
 
@@ -141,22 +152,20 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     try {
       final faces = await _detector.processImage(input);
       if (!mounted || _shooting) return;
-      final face = faces.length == 1 ? faces.first : null;
       // The stream is in the sensor's orientation; portrait swaps the sides.
-      final frameWidth = image.width < image.height
-          ? image.width
-          : image.height;
       final step = _liveness.see(
-        FaceFrame(
-          faces: faces.length,
-          trackingId: face?.trackingId,
-          leftEyeOpen: face?.leftEyeOpenProbability,
-          rightEyeOpen: face?.rightEyeOpenProbability,
-          yaw: face?.headEulerAngleY,
-          width: face == null ? 0 : face.boundingBox.width / frameWidth,
+        _frameOf(
+          faces,
+          width: math.min(image.width, image.height).toDouble(),
+          height: math.max(image.width, image.height).toDouble(),
         ),
       );
-      if (step.prompt != _prompt) setState(() => _prompt = step.prompt);
+      if (step.prompt != _prompt || step.aligned != _aligned) {
+        setState(() {
+          _prompt = step.prompt;
+          _aligned = step.aligned;
+        });
+      }
       final pose = step.shoot;
       if (pose != null) await _shoot(pose);
     } catch (error) {
@@ -166,6 +175,27 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     }
   }
 
+  /// What liveness needs of the detected faces, in the upright frame.
+  FaceFrame _frameOf(
+    List<Face> faces, {
+    required double width,
+    required double height,
+  }) {
+    final face = faces.length == 1 ? faces.first : null;
+    final box = face?.boundingBox;
+    return FaceFrame(
+      faces: faces.length,
+      trackingId: face?.trackingId,
+      leftEyeOpen: face?.leftEyeOpenProbability,
+      rightEyeOpen: face?.rightEyeOpenProbability,
+      yaw: face?.headEulerAngleY,
+      width: box == null ? 0 : box.width / width,
+      centerX: box == null ? .5 : box.center.dx / width,
+      centerY: box == null ? .5 : box.center.dy / height,
+      at: _clock.elapsed,
+    );
+  }
+
   Future<void> _shoot(FacePose pose) async {
     final camera = _camera;
     if (camera == null) return;
@@ -173,22 +203,60 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
     try {
       await camera.stopImageStream();
       final photo = await camera.takePicture();
-      HapticFeedback.lightImpact();
-      _paths.add(photo.path);
-      _liveness.shot(pose);
+      final problem = await _check(pose, photo.path);
+      if (!mounted) return;
+      if (problem != null) {
+        unawaited(File(photo.path).delete().then((_) {}, onError: (_) {}));
+        HapticFeedback.mediumImpact();
+        _liveness.retake();
+        setState(() {
+          _prompt = problem;
+          _aligned = false;
+        });
+      } else {
+        HapticFeedback.lightImpact();
+        _paths.add(photo.path);
+        _liveness.shot(pose);
+        setState(() {
+          _confirmed = true;
+          _prompt = 'تمام';
+        });
+      }
+      await Future<void>.delayed(_pause);
       if (!mounted) return;
       if (_liveness.done) {
         _deadline?.cancel();
         Navigator.pop(context, FaceCapture(paths: _paths, livenessOk: true));
         return;
       }
-      setState(() => _prompt = _liveness.prompt);
+      setState(() {
+        _confirmed = false;
+        _prompt = _liveness.prompt;
+      });
       _shooting = false;
       await camera.startImageStream(_frame);
     } catch (_) {
       _fail('تعذّر التقاط الصورة');
     } finally {
       _shooting = false;
+    }
+  }
+
+  /// The detector's reading of the still itself; a problem keeps the pose.
+  Future<String?> _check(FacePose pose, String path) async {
+    try {
+      final faces = await _detector.processImage(InputImage.fromFilePath(path));
+      final image = await decodeImageFromList(await File(path).readAsBytes());
+      final width = math.min(image.width, image.height).toDouble();
+      final height = math.max(image.width, image.height).toDouble();
+      image.dispose();
+      return FaceLiveness.problemWith(
+        pose,
+        _frameOf(faces, width: width, height: height),
+      );
+    } catch (error) {
+      debugPrint('Face photo check failed: $error');
+      return 'تعذّر فحص الصورة؛ أعدها';
     }
   }
 
@@ -204,8 +272,13 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   Future<void> _retry() async {
     _liveness.reset();
     _paths.clear();
+    _clock
+      ..stop()
+      ..reset();
     setState(() {
       _failure = null;
+      _aligned = false;
+      _confirmed = false;
       _prompt = 'ضع وجهك داخل الإطار';
     });
     if (_camera == null) {
@@ -241,7 +314,9 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   Widget build(BuildContext context) {
     final tokens = context.tokens;
     final camera = _camera;
-    final photo = math.min(_paths.length + 1, widget.poses.length);
+    final frameColor = _confirmed || _aligned
+        ? AppTokens.success
+        : Colors.white;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -261,10 +336,15 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
               child: Center(
                 child: AspectRatio(
                   aspectRatio: 3 / 4,
-                  child: ClipOval(
-                    child: camera == null || !camera.value.isInitialized
-                        ? const ColoredBox(color: Color(0xFF1A1A1A))
-                        : FittedBox(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        if (camera == null || !camera.value.isInitialized)
+                          const ColoredBox(color: Color(0xFF1A1A1A))
+                        else
+                          FittedBox(
                             fit: BoxFit.cover,
                             child: SizedBox(
                               // The preview is in the sensor's landscape size.
@@ -273,20 +353,41 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                               child: CameraPreview(camera),
                             ),
                           ),
+                        CustomPaint(painter: _FaceFramePainter(frameColor)),
+                        if (_confirmed)
+                          const Center(
+                            child: Icon(
+                              LucideIcons.circleCheck,
+                              size: 72,
+                              color: AppTokens.success,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
+            if (_enrolling)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: _Progress(
+                  total: widget.poses.length,
+                  taken: _liveness.taken,
+                ),
+              ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 28),
               child: _failure == null
                   ? Column(
                       children: [
                         Text(
                           _prompt,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: _confirmed
+                                ? AppTokens.success
+                                : Colors.white,
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
                           ),
@@ -294,7 +395,7 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
                         const SizedBox(height: 8),
                         Text(
                           _enrolling
-                              ? 'الصورة $photo من ${widget.poses.length} · تُطابق على الخادم فقط'
+                              ? 'الصورة ${math.min(_liveness.taken + 1, widget.poses.length)} من ${widget.poses.length} · تُطابق على الخادم فقط'
                               : 'تُرسل صورة واحدة مع البصمة وتُطابق على الخادم',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
@@ -339,4 +440,66 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
       ),
     );
   }
+}
+
+/// The oval the face goes in, the rest of the preview dimmed. White while the
+/// face is out of place, green once it fits. It matches where [FaceLiveness]
+/// wants the face: centred, about half the frame wide.
+class _FaceFramePainter extends CustomPainter {
+  const _FaceFramePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final oval = Rect.fromCenter(
+      center: size.center(Offset.zero),
+      width: size.width * .68,
+      height: size.height * .66,
+    );
+    final mask = Path()
+      ..addRect(Offset.zero & size)
+      ..addOval(oval)
+      ..fillType = PathFillType.evenOdd;
+    canvas.drawPath(mask, Paint()..color = const Color(0x99000000));
+    canvas.drawOval(
+      oval,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_FaceFramePainter old) => old.color != color;
+}
+
+/// One dot per enrolment photo: filled once taken, outlined while waiting.
+class _Progress extends StatelessWidget {
+  const _Progress({required this.total, required this.taken});
+
+  final int total;
+  final int taken;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      for (var i = 0; i < total; i++)
+        Container(
+          width: 12,
+          height: 12,
+          margin: const EdgeInsets.symmetric(horizontal: 5),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: i < taken ? AppTokens.success : Colors.transparent,
+            border: Border.all(
+              color: i < taken ? AppTokens.success : Colors.white70,
+              width: 2,
+            ),
+          ),
+        ),
+    ],
+  );
 }

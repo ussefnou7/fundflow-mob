@@ -57,7 +57,7 @@ class DevicePunchSensors implements PunchSensors {
   }) => FaceCaptureScreen.open(
     context,
     poses: enrol
-        ? const [FacePose.front, FacePose.side, FacePose.otherSide]
+        ? const [FacePose.front, FacePose.right, FacePose.left]
         : const [FacePose.front],
   );
 
