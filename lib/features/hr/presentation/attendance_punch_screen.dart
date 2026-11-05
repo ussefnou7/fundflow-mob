@@ -43,6 +43,9 @@ class _Range {
 
 class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
   HrToday? _today;
+
+  /// Today's row of the timesheet; null before any accepted punch.
+  HrTimesheetDay? _day;
   PunchFix? _fix;
   String? _error;
   bool _loading = true;
@@ -79,9 +82,11 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
       final today = await widget.repository.today(
         installationId: widget.sensors.installationId,
       );
+      final day = await _dayOf(today);
       if (!mounted) return;
       setState(() {
         _today = today;
+        _day = day;
         _type = null;
       });
       if (today.needsPlace && _fix == null) unawaited(_locate());
@@ -89,6 +94,18 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
       if (mounted) setState(() => _error = _message(error));
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  /// The summary is extra: without it the screen still punches.
+  Future<HrTimesheetDay?> _dayOf(HrToday today) async {
+    final date = DateTime.tryParse(today.dateTrx);
+    if (date == null) return null;
+    try {
+      final days = await widget.repository.timesheet(from: date, to: date);
+      return days.where((d) => d.workDate == today.dateTrx).firstOrNull;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -302,7 +319,7 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            'بصمات اليوم',
+            'ملخص اليوم',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -310,7 +327,10 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          _PunchList(punches: today.punches),
+          _DaySummary(
+            day: _day,
+            pending: today.punches.where((p) => p.status == 'PENDING').toList(),
+          ),
         ],
       ],
     );
@@ -1071,137 +1091,170 @@ class _LocationCard extends StatelessWidget {
   }
 }
 
-class _PunchList extends StatelessWidget {
-  const _PunchList({required this.punches});
-  final List<HrPunch> punches;
+/// Today as the timesheet worked it out: check-in, check-out, hours and
+/// what they made; held punches below it, as they count only once approved.
+class _DaySummary extends StatelessWidget {
+  const _DaySummary({required this.day, required this.pending});
+  final HrTimesheetDay? day;
+  final List<HrPunch> pending;
 
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
-    if (punches.isEmpty) {
+    final day = this.day;
+    final decoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: tokens.line),
+    );
+    if (day == null && pending.isEmpty) {
       return Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: tokens.line),
-        ),
+        decoration: decoration,
         child: const AppEmptyState(
           icon: LucideIcons.fingerprint,
           title: 'لم تُسجَّل بصمات اليوم',
-          message: 'تظهر هنا بصمات الحضور والانصراف فور تسجيلها.',
+          message: 'يظهر هنا الحضور والانصراف وساعات العمل فور التسجيل.',
         ),
       );
     }
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tokens.line),
-      ),
-      child: Column(
-        children: [
-          for (final (i, punch) in punches.indexed)
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: i == 0
-                    ? null
-                    : Border(top: BorderSide(color: tokens.line)),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: punch.punchType == 'IN'
-                          ? AppTokens.successTint
-                          : AppTokens.infoTint,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      punch.punchType == 'IN'
-                          ? LucideIcons.logIn
-                          : LucideIcons.logOut,
-                      size: 18,
-                      color: punch.punchType == 'IN'
-                          ? AppTokens.success
-                          : AppTokens.info,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              punch.punchType == 'IN' ? 'حضور' : 'انصراف',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            if (punch.status == 'PENDING')
-                              const AppTag(
-                                'معلّقة',
-                                tone: AppTone.info,
-                                icon: LucideIcons.hourglass,
-                              ),
-                          ],
-                        ),
-                        Text(
-                          [
-                            if (punch.location != null) punch.location!.name,
-                            if (punch.distanceM != null)
-                              'على بعد ${punch.distanceM} م',
-                          ].join(' · ').ifEmpty('بدون موقع محدد'),
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            color: tokens.muted,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        if (punch.trustFlags.isNotEmpty) ...[
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 5,
-                            runSpacing: 5,
-                            children: [
-                              for (final flag in punch.trustFlags)
-                                AppTag(
-                                  trustFlagLabel(flag),
-                                  tone: AppTone.warning,
-                                ),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  Text(
-                    hrClock(punch.punchedAt),
-                    textDirection: TextDirection.ltr,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
+    final figures = day == null
+        ? const <(String, String, Color?)>[]
+        : [
+            ('الحضور', hrClock(day.checkIn), null),
+            ('الانصراف', hrClock(day.checkOut), null),
+            (
+              'ساعات العمل',
+              day.checkIn == null || day.checkOut == null
+                  ? '—'
+                  : hrDuration(day.workedMinutes),
+              null,
             ),
+            if (day.lateMinutes > 0)
+              ('التأخير', hrDuration(day.lateMinutes), AppTokens.warning),
+            if (day.earlyLeaveMinutes > 0)
+              (
+                'الانصراف المبكر',
+                hrDuration(day.earlyLeaveMinutes),
+                AppTokens.warning,
+              ),
+            if (day.permissionMinutes > 0)
+              ('الإذن', hrDuration(day.permissionMinutes), AppTokens.info),
+            if (day.overtimeMinutes > 0)
+              ('الإضافي', hrDuration(day.overtimeMinutes), AppTokens.success),
+          ];
+    return Container(
+      decoration: decoration,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (day != null) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    day.shift?.name ?? 'الوردية',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: tokens.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                dayStatusTag(day),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final (label, value, color) in figures)
+                  _Figure(label: label, value: value, color: color),
+              ],
+            ),
+            if (day.overtimeMinutes > day.approvedOvertimeMinutes &&
+                day.lines.any(
+                  (l) => l.lineType == 'OVERTIME' && l.status == 'DRAFT',
+                )) ...[
+              const SizedBox(height: 8),
+              Text(
+                'الوقت الإضافي بانتظار موافقة المدير',
+                style: TextStyle(fontSize: 11.5, color: tokens.muted),
+              ),
+            ],
+          ],
+          for (final punch in pending) ...[
+            if (day != null || punch != pending.first)
+              Divider(height: 20, color: tokens.line),
+            Row(
+              children: [
+                Icon(
+                  punch.punchType == 'IN'
+                      ? LucideIcons.logIn
+                      : LucideIcons.logOut,
+                  size: 17,
+                  color: AppTokens.info,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${punch.punchType == 'IN' ? 'حضور' : 'انصراف'} ${hrClock(punch.punchedAt)}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const AppTag(
+                  'معلّقة للمراجعة',
+                  tone: AppTone.info,
+                  icon: LucideIcons.hourglass,
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-extension on String {
-  String ifEmpty(String fallback) => isEmpty ? fallback : this;
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.value, this.color});
+  final String label;
+  final String value;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    return Container(
+      width: 104,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: tokens.wash,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: tokens.muted)),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            textDirection: TextDirection.ltr,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: color ?? tokens.ink,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Shown when the phone is out of range, has no location or reports a fake

@@ -455,6 +455,8 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
 /// The oval the face goes in, the rest of the preview dimmed. White while the
 /// face is out of place, green once it fits. It matches where [FaceLiveness]
 /// wants the face: centred, about half the frame wide.
+/// A head outline the face goes in: forehead, ears, jaw and chin. The dark
+/// mask around it leaves only the face lit.
 class _FaceFramePainter extends CustomPainter {
   const _FaceFramePainter(this.color);
 
@@ -462,23 +464,48 @@ class _FaceFramePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final oval = Rect.fromCenter(
-      center: size.center(Offset.zero),
-      width: size.width * .68,
-      height: size.height * .66,
+    final face = _outline(
+      Rect.fromCenter(
+        center: size.center(Offset.zero),
+        width: size.width * .74,
+        height: size.height * .68,
+      ),
     );
     final mask = Path()
       ..addRect(Offset.zero & size)
-      ..addOval(oval)
+      ..addPath(face, Offset.zero)
       ..fillType = PathFillType.evenOdd;
     canvas.drawPath(mask, Paint()..color = const Color(0x99000000));
-    canvas.drawOval(
-      oval,
+    canvas.drawPath(
+      face,
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3,
+        ..strokeWidth = 3
+        ..strokeJoin = StrokeJoin.round,
     );
+  }
+
+  /// The outline inside [box], drawn clockwise from the top of the head; the
+  /// left half mirrors the right.
+  static Path _outline(Rect box) {
+    Offset at(double x, double y) =>
+        Offset(box.left + box.width * x, box.top + box.height * y);
+    void curve(Path path, List<double> p) {
+      final a = at(p[0], p[1]), b = at(p[2], p[3]), c = at(p[4], p[5]);
+      path.cubicTo(a.dx, a.dy, b.dx, b.dy, c.dx, c.dy);
+    }
+
+    final start = at(.5, 0);
+    final path = Path()..moveTo(start.dx, start.dy);
+    curve(path, [.80, 0, .93, .14, .93, .36]); // forehead to temple
+    curve(path, [1, .36, 1, .58, .92, .58]); // ear
+    curve(path, [.91, .74, .80, .88, .66, .96]); // jaw
+    curve(path, [.58, 1, .42, 1, .34, .96]); // chin
+    curve(path, [.20, .88, .09, .74, .08, .58]);
+    curve(path, [0, .58, 0, .36, .07, .36]);
+    curve(path, [.07, .14, .20, 0, .5, 0]);
+    return path..close();
   }
 
   @override

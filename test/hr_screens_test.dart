@@ -113,7 +113,7 @@ void main() {
       find.text('طلب ربط هذا الجهاز بانتظار موافقة مديرك'),
       findsOneWidget,
     );
-    expect(find.text('معلّقة'), findsOneWidget);
+    expect(find.text('معلّقة للمراجعة'), findsOneWidget);
   });
 
   testWidgets('another phone punches for the manager to approve', (
@@ -914,10 +914,26 @@ class _FakeHrRepository extends HrRepository {
   );
 
   @override
-  Future<List<HrTimesheetDay>> timesheet({
-    DateTime? from,
-    DateTime? to,
-  }) async => [
+  Future<List<HrTimesheetDay>> timesheet({DateTime? from, DateTime? to}) async {
+    // The punch screen asks for today alone.
+    if (from != null && from == to) {
+      final ins = _punches.where(
+        (p) => p.punchType == 'IN' && p.status == 'ACCEPTED',
+      );
+      return [
+        if (ins.isNotEmpty)
+          _day(
+            '2026-10-28',
+            'PRESENT',
+            worked: 0,
+            checkIn: ins.first.punchedAt,
+          ),
+      ];
+    }
+    return _month;
+  }
+
+  List<HrTimesheetDay> get _month => [
     _day(
       '2026-10-27',
       'PRESENT',
