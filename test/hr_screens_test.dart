@@ -269,6 +269,29 @@ void main() {
     expect(repository.punched, isNull);
   });
 
+  testWidgets('without face service on the server the employee is told plainly', (
+    tester,
+  ) async {
+    _setPhone(tester);
+    final repository = _FakeHrRepository(
+      faceAvailable: false,
+      selfieRequired: true,
+      faceEnrolled: false,
+    );
+    final sensors = _FakeSensors(const PunchFix(lat: 30.0001, lng: 31.0001));
+    await tester.pumpWidget(
+      _app(AttendancePunchScreen(repository: repository, sensors: sensors)),
+    );
+    await tester.pumpAndSettle();
+    await _holdToPunch(tester, find.text('تسجيل الانصراف'));
+    expect(repository.punched, isNull);
+    expect(
+      find.text('خدمة بصمة الوجه غير متاحة حاليًا؛ تواصل مع الموارد البشرية'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Bad state'), findsNothing);
+  });
+
   for (final enrolled in [false, true]) {
     testWidgets(
       'location-only shift never requests a face (enrolled: $enrolled)',

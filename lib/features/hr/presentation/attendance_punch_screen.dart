@@ -85,7 +85,7 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
       });
       if (today.needsPlace && _fix == null) unawaited(_locate());
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = _message(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -192,7 +192,7 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
+        ).showSnackBar(SnackBar(content: Text(_message(error))));
       }
     } finally {
       _punchInProgress = false;
@@ -224,7 +224,7 @@ class _AttendancePunchScreenState extends State<AttendancePunchScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(error.toString())));
+        ).showSnackBar(SnackBar(content: Text(_message(error))));
       }
       return false;
     } finally {
@@ -1282,3 +1282,8 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
     );
   }
 }
+
+/// What the employee reads: a check that stopped the punch says why, without
+/// Dart's "Bad state:" prefix; anything else as it describes itself.
+String _message(Object error) =>
+    error is StateError ? error.message : error.toString();
