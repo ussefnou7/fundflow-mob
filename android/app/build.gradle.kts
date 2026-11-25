@@ -22,10 +22,12 @@ gradle.taskGraph.whenReady {
         }
         val defines = (project.findProperty("dart-defines") as? String).orEmpty().split(",")
             .filter { it.isNotBlank() }.map { String(Base64.getDecoder().decode(it)) }
+        // Without API_BASE_URL a release build talks to AppConfig.productionUrl;
+        // an override must still be HTTPS.
         val api = defines.firstOrNull { it.startsWith("API_BASE_URL=") }?.substringAfter("=")
         val uri = api?.let { URI(it) }
-        if (uri == null || uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null) {
-            throw GradleException("Release requires --dart-define=API_BASE_URL=https://your-production-host")
+        if (uri != null && (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null)) {
+            throw GradleException("Release API_BASE_URL must be https://<host> without credentials")
         }
     }
 }

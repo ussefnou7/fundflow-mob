@@ -4,12 +4,9 @@
 # One-time setup in the Codemagic web app (README → "iOS builds on Codemagic"):
 #   1. Team integrations → Developer Portal: add an App Store Connect API key
 #      (App Manager role) and name it `monetizer_asc`.
-#   2. App → Environment variables: group `monetizer_ios` with
-#      API_BASE_URL (https://fundflow-production-bb03d785.up.railway.app),
-#      WEB_BASE_URL (https://fundflow-stg.up.railway.app, serves /privacy and
-#      /support) and APP_STORE_APPLE_ID (the app's
-#      numeric Apple ID from App Store Connect → App Information).
-#   3. Start the workflow by hand, or push a tag like v1.0.0.
+#   2. Start the workflow by hand, or push a tag like v1.0.0.
+# The addresses and the app's Apple ID below are not secrets; when the domain
+# changes, change them here (and AppConfig).
 
 workflows:
   ios-release:
@@ -22,8 +19,11 @@ workflows:
       flutter: 3.41.5
       xcode: latest
       cocoapods: default
-      groups:
-        - monetizer_ios
+      vars:
+        API_BASE_URL: https://fundflow-production-bb03d785.up.railway.app
+        WEB_BASE_URL: https://fundflow-stg.up.railway.app
+        # App Store Connect → App Information → Apple ID
+        APP_STORE_APPLE_ID: 6839345338
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.monetizer.app
@@ -39,7 +39,7 @@ workflows:
           for name in API_BASE_URL WEB_BASE_URL; do
             case "${!name}" in
               https://*) echo "$name is set" ;;
-              *) echo "$name must be an https:// address (group monetizer_ios)"; exit 1 ;;
+              *) echo "$name must be an https:// address"; exit 1 ;;
             esac
           done
       - name: Get packages

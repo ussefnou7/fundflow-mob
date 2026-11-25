@@ -18,6 +18,9 @@ if [[ -e "$KEYSTORE" ]]; then
 fi
 mkdir -p "$(dirname "$KEYSTORE")"
 
+echo "Switch the keyboard to English first: keytool accepts only English letters,"
+echo "digits and symbols in the password (an Arabic layout fails with 'Password is not ASCII')."
+
 keytool -genkeypair -v \
   -keystore "$KEYSTORE" \
   -storetype PKCS12 \

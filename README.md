@@ -85,11 +85,8 @@ TestFlight. One-time setup:
    with the App Manager role and download the `.p8` (it downloads only once).
 3. In Codemagic, connect the GitHub repo. Under Team integrations → Developer
    Portal, add the key (issuer ID, key ID, `.p8`) and name it `monetizer_asc`.
-4. Under the app's Environment variables, add a group `monetizer_ios` with
-   `API_BASE_URL` (`https://fundflow-production-bb03d785.up.railway.app`),
-   `WEB_BASE_URL` (`https://fundflow-stg.up.railway.app`, which serves
-   `/privacy` and `/support`) and
-   `APP_STORE_APPLE_ID` (App Store Connect → App Information → Apple ID).
+4. The API and web addresses and the app's Apple ID (`6839345338`) are in
+   `codemagic.yaml`; no environment variables are needed.
 5. Start `iOS release → TestFlight` by hand, or push a tag such as `v1.0.0`.
 
 The build number is set automatically to one above the latest TestFlight
