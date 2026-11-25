@@ -8,6 +8,15 @@ import '../features/notifications/application/push_notification_service.dart';
 import '../features/workspace/application/workspace_controller.dart';
 import '../features/workspace/presentation/workspace_shell.dart';
 
+/// The privacy cover hides the app in the app switcher. The Face ID prompt
+/// also makes the app inactive, and covering it then showed a solid green
+/// screen through the whole biometric login, so our own prompt is exempt.
+/// Leaving the app (hidden / paused) always covers it.
+bool shouldObscureApp(
+  AppLifecycleState state, {
+  required bool biometricPrompt,
+}) => !(state == AppLifecycleState.inactive && biometricPrompt);
+
 class FundFlowApp extends StatefulWidget {
   const FundFlowApp({
     super.key,
@@ -59,7 +68,12 @@ class _FundFlowAppState extends State<FundFlowApp> with WidgetsBindingObserver {
           state == AppLifecycleState.hidden) {
         _backgroundAt ??= DateTime.now();
       }
-      setState(() => _obscured = true);
+      if (shouldObscureApp(
+        state,
+        biometricPrompt: authController.biometricPromptActive,
+      )) {
+        setState(() => _obscured = true);
+      }
     }
   }
 

@@ -17,6 +17,10 @@ class AuthController extends ChangeNotifier {
   AuthUser? user;
   String? errorMessage;
   bool submitting = false;
+
+  /// True while the system Face ID / fingerprint prompt may be on screen. The
+  /// prompt makes the app "inactive", which must not raise the privacy cover.
+  bool biometricPromptActive = false;
   bool mfaRequired = false;
   void Function()? onSessionEnded;
   BindingOffer? biometricOffer;
@@ -75,6 +79,7 @@ class AuthController extends ChangeNotifier {
       errorMessage = 'تعذر إتمام الدخول. حاول مرة أخرى.';
       return false;
     } finally {
+      biometricPromptActive = false;
       submitting = false;
       notifyListeners();
     }
@@ -87,6 +92,7 @@ class AuthController extends ChangeNotifier {
     submitting = true;
     errorMessage = null;
     notifyListeners();
+    biometricPromptActive = true;
     try {
       user = await biometrics.login();
       if (user == null) return false;
@@ -108,6 +114,7 @@ class AuthController extends ChangeNotifier {
   /// Binds this phone: true when it waits for the manager, false when it is
   /// bound now, null when it failed ([errorMessage] says why).
   Future<bool?> bindOfferedDevice() async {
+    biometricPromptActive = true;
     try {
       return await _biometrics?.bind() ?? false;
     } on AuthFailure catch (error) {
@@ -117,6 +124,8 @@ class AuthController extends ChangeNotifier {
     } catch (_) {
       errorMessage = 'تعذر ربط الجهاز. يمكنك المتابعة بكلمة المرور.';
       return null;
+    } finally {
+      biometricPromptActive = false;
     }
   }
 
