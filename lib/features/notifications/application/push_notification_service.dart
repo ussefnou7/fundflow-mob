@@ -51,6 +51,23 @@ class PushNotificationService extends ChangeNotifier {
   FirebaseMessaging get _messaging =>
       _providedMessaging ?? FirebaseMessaging.instance;
   bool _ready = false;
+
+  /// What happened while setting up push on this device, newest last; shown
+  /// by a long press on the notifications title, since store builds have no
+  /// console to read.
+  final List<String> diagnostics = [];
+
+  void _note(String line) {
+    final now = DateTime.now();
+    final time =
+        '${now.hour.toString().padLeft(2, '0')}:'
+        '${now.minute.toString().padLeft(2, '0')}:'
+        '${now.second.toString().padLeft(2, '0')}';
+    diagnostics.add('$time $line');
+    if (diagnostics.length > 60) diagnostics.removeAt(0);
+    debugPrint('push: $line');
+  }
+
   int _userGeneration = 0;
   StreamSubscription<String>? _registrationSubscription;
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
@@ -92,10 +109,18 @@ class PushNotificationService extends ChangeNotifier {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
       await initialize();
       _ready = true;
+      _note('Firebase ready');
       if (_authenticated) await bindAuthenticatedUser();
-    } catch (_) {
+    } catch (error) {
       // Inbox remains available without push support.
+      _note('Firebase start failed: $error');
     }
+  }
+
+  /// The diagnostics panel's "retry" button.
+  Future<void> retryRegistration() {
+    _note('retry requested');
+    return bindAuthenticatedUser();
   }
 
   /// Tests run without Firebase.initializeApp, which [start] would call.
@@ -124,14 +149,19 @@ class PushNotificationService extends ChangeNotifier {
 
   Future<void> bindAuthenticatedUser() async {
     _authenticated = true;
-    if (!_ready) return;
+    if (!_ready) {
+      _note('signed in, waiting for Firebase');
+      return;
+    }
     try {
       final settings = await _messaging.requestPermission(
         alert: true,
         badge: true,
         sound: true,
       );
+      _note('permission: ${settings.authorizationStatus.name}');
       if (settings.authorizationStatus == AuthorizationStatus.denied) return;
+      await _messaging.setAutoInitEnabled(true);
       await _messaging.setForegroundNotificationPresentationOptions(
         alert: true,
         badge: true,
@@ -141,6 +171,7 @@ class PushNotificationService extends ChangeNotifier {
       await _register();
     } catch (error, stackTrace) {
       // A missing Play Services/APNs setup must not block normal app use.
+      _note('registration gave up: $error');
       debugPrint('Firebase push registration failed: $error');
       debugPrintStack(stackTrace: stackTrace);
     }
@@ -158,9 +189,11 @@ class PushNotificationService extends ChangeNotifier {
       if (_isIOS) await _waitForApnsToken();
       try {
         await _messaging.register();
+        _note('FCM register call ok (attempt ${attempt + 1})');
         return;
       } catch (error) {
         lastError = error;
+        _note('FCM register attempt ${attempt + 1} failed: $error');
         await Future<void>.delayed(_retryDelay * (attempt + 1) * 2);
       }
     }
@@ -170,9 +203,13 @@ class PushNotificationService extends ChangeNotifier {
   Future<void> _waitForApnsToken() async {
     for (var i = 0; i < 20; i++) {
       final token = await _messaging.getAPNSToken();
-      if (token != null && token.isNotEmpty) return;
+      if (token != null && token.isNotEmpty) {
+        _note('APNs token ok (${token.length} chars)');
+        return;
+      }
       await Future<void>.delayed(_retryDelay);
     }
+    _note('APNs token still missing after waiting');
   }
 
   Future<void> unbindAuthenticatedUser() async {
@@ -198,6 +235,9 @@ class PushNotificationService extends ChangeNotifier {
   }
 
   Future<void> _onRegistered(String registrationId) async {
+    _note(
+      'FCM registered: ${registrationId.substring(0, registrationId.length.clamp(0, 8))}…',
+    );
     _registrationId = registrationId;
     if (_authenticated) await _upload(registrationId);
   }
@@ -208,7 +248,9 @@ class PushNotificationService extends ChangeNotifier {
         firebaseInstallationId: registrationId,
         platform: _isIOS ? 'IOS' : 'ANDROID',
       );
+      _note('sent to server');
     } catch (error, stackTrace) {
+      _note('sending to server failed: $error');
       // FCM retries registration on later app starts; notification setup must
       // never block the signed-in workspace.
       debugPrint('Firebase push registration upload failed: $error');

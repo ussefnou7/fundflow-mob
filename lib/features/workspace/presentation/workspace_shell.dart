@@ -563,6 +563,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
                           ? null
                           : () => _navigateBack(pages),
                       notificationRepository: widget.workspace.notifications,
+                      pushNotifications: widget.pushNotifications,
                       onNotificationSelected: (notification) =>
                           _handleNotification(notification, pages),
                       onNotificationCountChanged: (count) {
@@ -964,6 +965,7 @@ class _CompanyHeader extends StatefulWidget {
     required this.onOpenMenu,
     required this.onBack,
     required this.notificationRepository,
+    this.pushNotifications,
     required this.onNotificationSelected,
     required this.onNotificationCountChanged,
     required this.onSelectCompany,
@@ -975,6 +977,7 @@ class _CompanyHeader extends StatefulWidget {
   final VoidCallback onOpenMenu;
   final VoidCallback? onBack;
   final NotificationRepository? notificationRepository;
+  final PushNotificationService? pushNotifications;
   final NotificationSelection onNotificationSelected;
   final ValueChanged<int> onNotificationCountChanged;
   final ValueChanged<String>? onSelectCompany;
@@ -1091,6 +1094,7 @@ class _CompanyHeaderState extends State<_CompanyHeader> {
                 height: height,
                 child: NotificationSheet(
                   repository: repository,
+                  push: widget.pushNotifications,
                   embedded: true,
                   onClose: _closeNotifications,
                   onCountChanged: widget.onNotificationCountChanged,

@@ -13,7 +13,9 @@ Future<void> _open(BuildContext context, String url, String failure) async {
     mode: LaunchMode.inAppBrowserView,
   );
   if (!opened && context.mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(failure)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(failure)));
   }
 }
 
@@ -53,11 +55,8 @@ class PublicLinks extends StatelessWidget {
         TextButton.icon(
           key: const ValueKey('privacy-policy-link'),
           style: style,
-          onPressed: () => _open(
-            context,
-            '$baseUrl/privacy',
-            'تعذر فتح سياسة الخصوصية',
-          ),
+          onPressed: () =>
+              _open(context, '$baseUrl/privacy', 'تعذر فتح سياسة الخصوصية'),
           icon: const Icon(LucideIcons.shieldCheck, size: 16),
           label: const Text('سياسة الخصوصية'),
         ),

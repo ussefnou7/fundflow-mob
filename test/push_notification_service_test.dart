@@ -33,6 +33,17 @@ void main() {
       );
       expect(messaging.registerBeforeToken, isFalse);
       expect(repository.uploads, [('fid-123', 'IOS')]);
+      expect(messaging.autoInit, isTrue);
+      expect(
+        service.diagnostics.join('\n'),
+        allOf(
+          contains('permission: authorized'),
+          contains('APNs token ok'),
+          contains('FCM register attempt 1 failed'),
+          contains('FCM registered'),
+          contains('sent to server'),
+        ),
+      );
     },
   );
 
@@ -144,6 +155,11 @@ class _FakeMessaging implements FirebaseMessaging {
 
   @override
   Future<RemoteMessage?> getInitialMessage() async => null;
+
+  bool autoInit = false;
+
+  @override
+  Future<void> setAutoInitEnabled(bool enabled) async => autoInit = enabled;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

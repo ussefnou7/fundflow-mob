@@ -4,6 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_pagination.dart';
 import '../../custody/presentation/custody_widgets.dart';
+import '../application/push_notification_service.dart';
 import '../data/notification_repository.dart';
 import '../domain/notification_models.dart';
 
@@ -14,6 +15,7 @@ class NotificationSheet extends StatefulWidget {
   const NotificationSheet({
     super.key,
     required this.repository,
+    this.push,
     this.onCountChanged,
     this.onSelected,
     this.onClose,
@@ -21,6 +23,9 @@ class NotificationSheet extends StatefulWidget {
   });
 
   final NotificationRepository repository;
+
+  /// Long-pressing the title shows how push setup went on this device.
+  final PushNotificationService? push;
   final ValueChanged<int>? onCountChanged;
   final NotificationSelection? onSelected;
   final VoidCallback? onClose;
@@ -96,6 +101,44 @@ class _NotificationSheetState extends State<NotificationSheet> {
     }
   }
 
+  Future<void> _showPushDiagnostics() async {
+    final push = widget.push!;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('حالة إشعارات الجهاز'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 320,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                push.diagnostics.isEmpty
+                    ? 'لا توجد خطوات مسجلة بعد'
+                    : push.diagnostics.join('\n'),
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await push.retryRegistration();
+                setDialogState(() {});
+              },
+              child: const Text('إعادة التسجيل'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إغلاق'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final inbox = _inbox;
@@ -122,12 +165,17 @@ class _NotificationSheetState extends State<NotificationSheet> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        'الإشعارات',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: context.tokens.ink,
+                      child: GestureDetector(
+                        onLongPress: widget.push == null
+                            ? null
+                            : _showPushDiagnostics,
+                        child: Text(
+                          'الإشعارات',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: context.tokens.ink,
+                          ),
                         ),
                       ),
                     ),
