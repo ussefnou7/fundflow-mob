@@ -197,6 +197,24 @@ class PushNotificationService extends ChangeNotifier {
         await Future<void>.delayed(_retryDelay * (attempt + 1) * 2);
       }
     }
+    // iOS fallback: the FID registration can be refused for the iOS app while
+    // the long-standing FCM token still works. The server tells the two apart
+    // (tokens contain a colon) and sends to whichever it was given.
+    if (_isIOS && _authenticated && generation == _userGeneration) {
+      try {
+        // ignore: deprecated_member_use
+        final token = await _messaging.getToken();
+        if (token != null && token.isNotEmpty) {
+          _note('FCM token fallback ok (${token.length} chars)');
+          _registrationId = token;
+          await _upload(token);
+          return;
+        }
+        _note('FCM token fallback returned nothing');
+      } catch (error) {
+        _note('FCM token fallback failed: $error');
+      }
+    }
     if (lastError != null) throw lastError;
   }
 

@@ -47,6 +47,29 @@ void main() {
     },
   );
 
+  test(
+    'on iOS a refused FID registration falls back to the FCM token',
+    () async {
+      final messaging = _FakeMessaging(apnsAfterCalls: 0, registerFailures: 99);
+      final repository = _FakeRepository();
+      final service = PushNotificationService(
+        repository: repository,
+        messaging: messaging,
+        isIOS: true,
+        retryDelay: Duration.zero,
+      );
+      await service.initialize();
+      service.markReady();
+
+      await service.bindAuthenticatedUser();
+      await pumpEventQueue();
+
+      expect(messaging.registerCalls, 5);
+      expect(repository.uploads, [('fcm:token-abc', 'IOS')]);
+      expect(service.diagnostics.join('\n'), contains('FCM token fallback ok'));
+    },
+  );
+
   test('Android registers at once, without asking for an APNs token', () async {
     final messaging = _FakeMessaging(
       apnsAfterCalls: 1 << 30,
@@ -155,6 +178,12 @@ class _FakeMessaging implements FirebaseMessaging {
 
   @override
   Future<RemoteMessage?> getInitialMessage() async => null;
+
+  @override
+  Future<String?> getToken({
+    String? vapidKey,
+    String? serviceWorkerScriptPath,
+  }) async => 'fcm:token-abc';
 
   bool autoInit = false;
 
