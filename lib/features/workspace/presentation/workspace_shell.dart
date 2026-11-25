@@ -7,25 +7,31 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/format/arabic_search.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/public_links.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../custody/presentation/custody_screen.dart';
 import '../../custody/presentation/custody_request_screen.dart';
 import '../../custody/presentation/aggregate_custody_screen.dart';
 import '../../custody/presentation/custody_widgets.dart';
-import '../../custody/presentation/dashboard_screen.dart';
+import '../../crm/presentation/follow_ups_today_screen.dart';
+import '../../crm/presentation/inspection_dashboard_screen.dart';
+import '../../dashboard/presentation/dashboard_screen.dart';
+import '../../crm/presentation/inspections_screen.dart';
+import '../../crm/presentation/leads_screen.dart';
 import '../../extracts/presentation/contractor_extract_screen.dart';
-import '../../hr/presentation/attendance_log_screen.dart';
-import '../../hr/presentation/employee_profile_screen.dart';
-import '../../hr/presentation/hr_dashboard_screen.dart';
-import '../../hr/presentation/hr_payslips_screen.dart';
-import '../../hr/presentation/hr_requests_screen.dart';
 import '../../notifications/data/notification_repository.dart';
 import '../../notifications/application/push_notification_service.dart';
 import '../../notifications/domain/notification_models.dart';
 import '../../notifications/presentation/notification_sheet.dart';
+import '../../meetings/presentation/meetings_screen.dart';
 import '../../settings/domain/settings_models.dart';
 import '../../settings/presentation/reference_settings_screen.dart';
+import '../../scm/domain/scm_models.dart';
+import '../../scm/presentation/scm_materials_screen.dart';
+import '../../scm/presentation/scm_screens.dart';
 import '../../treasury/presentation/treasury_screen.dart';
+import '../../users/presentation/users_screen.dart';
+import '../../workflow/presentation/approvals_screen.dart';
 import '../application/workspace_controller.dart';
 import '../domain/workspace_context.dart';
 
@@ -46,6 +52,8 @@ class WorkspaceShell extends StatefulWidget {
 
 class _WorkspaceShellState extends State<WorkspaceShell>
     with WidgetsBindingObserver {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final List<String> _pageHistory = [];
   int _index = 0;
   String? _selectedOwner;
   CustodyTab _custodyTab = CustodyTab.moves;
@@ -80,7 +88,10 @@ class _WorkspaceShellState extends State<WorkspaceShell>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadNotifications();
+    if (state == AppLifecycleState.resumed) {
+      _loadNotifications();
+      unawaited(widget.workspace.refreshApprovals());
+    }
   }
 
   @override
@@ -115,101 +126,35 @@ class _WorkspaceShellState extends State<WorkspaceShell>
             if (mounted) _openPushEvent(pendingPushEvent);
           });
         }
+        // The follow-up board is deliberately the first destination whenever
+        // the signed-in user can access it.
         final pages = <_ShellPage>[];
-        if (workspace.permissions.contains('DASHBOARD_VIEW')) {
+        if (workspace.permissions.contains('DASHBOARD_VIEW') &&
+            widget.workspace.dashboard != null) {
           pages.add(
             _ShellPage(
               'المتابعة',
               LucideIcons.layoutDashboard,
               () => DashboardScreen(
-                repository: widget.workspace.custody,
-                onOpenAggregate: () => _selectPage(pages, 'مجمع العهد'),
-                onOpenCustody: (ownerId) {
-                  setState(() => _selectedOwner = ownerId);
-                  _selectPage(pages, 'العهدة');
-                },
+                repository: widget.workspace.dashboard!,
+                onOpen: (label) => _selectPage(pages, label),
               ),
             ),
           );
         }
-        // Employee self-service: each screen acts on the user's own record only.
-        final hr = widget.workspace.hr;
-        final sensors = widget.workspace.punchSensors;
-        final approvals = widget.workspace.approvals;
-        final canPunch = workspace.permissions.contains('HR_ATTENDANCE_PUNCH');
-        final canAsk = workspace.permissions.contains('HR_REQUESTS_CREATE');
-        final canReviewAttendance = workspace.permissions.contains(
-          'HR_ATTENDANCE_REVIEW',
-        );
-        final canReviewRequests = workspace.permissions.contains(
-          'HR_REQUESTS_APPROVE',
-        );
-        final canViewPayroll = workspace.permissions.contains(
-          'HR_PAYROLL_VIEW',
-        );
-        final managesHr =
-            approvals.decides ||
-            canReviewAttendance ||
-            canReviewRequests ||
-            canViewPayroll;
-        if (hr != null && managesHr) {
+        if (widget.workspace.workflow != null) {
           pages.add(
             _ShellPage(
-              'لوحة الموارد البشرية',
-              LucideIcons.usersRound,
-              () => HrDashboardScreen(
-                repository: hr,
-                companyWideAttendance: canReviewAttendance,
-                companyWideRequests: canReviewRequests,
-                canViewPayroll: canViewPayroll,
+              'طلبات الموافقة',
+              LucideIcons.inbox,
+              () => ApprovalsScreen(
+                repository: widget.workspace.workflow!,
+                permissions: workspace.permissions,
+                currentUserId: widget.auth.user!.id,
+                scm: widget.workspace.scm,
+                onCountChanged: widget.workspace.setWorkflowApprovals,
               ),
-            ),
-          );
-        }
-        if (hr != null && sensors != null && canPunch) {
-          pages.add(
-            _ShellPage(
-              'الحضور',
-              LucideIcons.fingerprint,
-              () => AttendanceLogScreen(
-                repository: hr,
-                sensors: sensors,
-                showTeam: managesHr,
-                companyWide: canReviewAttendance,
-                showApprovals: approvals.decides,
-                onApprovalsChanged: widget.workspace.refreshApprovals,
-              ),
-              count: approvals.waiting,
-            ),
-          );
-        }
-        if (hr != null && (canAsk || managesHr)) {
-          pages.add(
-            _ShellPage(
-              'الطلبات',
-              LucideIcons.fileText,
-              () => HrRequestsScreen(
-                repository: hr,
-                canCreate: canAsk,
-                showTeam: managesHr,
-                companyWide: canReviewRequests,
-              ),
-            ),
-          );
-        }
-        if (hr != null && (canPunch || canAsk)) {
-          pages.add(
-            _ShellPage(
-              'قسائم المرتب',
-              LucideIcons.receiptText,
-              () => HrPayslipsScreen(repository: hr),
-            ),
-          );
-          pages.add(
-            _ShellPage(
-              'ملف الموظف',
-              LucideIcons.idCard,
-              () => EmployeeProfileScreen(repository: hr),
+              count: widget.workspace.workflowApprovals.count,
             ),
           );
         }
@@ -232,8 +177,9 @@ class _WorkspaceShellState extends State<WorkspaceShell>
         }
         // Employees follow their own requests and transfers inside «العهدة»;
         // this screen is the company-wide review queue for managers.
+        // As on the web: viewers see every request, creators their own.
         if (workspace.permissions.contains('CUSTODY_REQUEST_VIEW') ||
-            workspace.permissions.contains('CUSTODY_REQUEST_APPROVE')) {
+            workspace.permissions.contains('CUSTODY_REQUEST_CREATE')) {
           pages.add(
             _ShellPage(
               'طلبات العهدة',
@@ -255,6 +201,26 @@ class _WorkspaceShellState extends State<WorkspaceShell>
                 repository: widget.workspace.custody,
                 currentUserId: widget.auth.user!.id,
                 permissions: workspace.permissions,
+              ),
+            ),
+          );
+        }
+        if (workspace.permissions.contains('SETTINGS_VIEW') &&
+            widget.workspace.settings != null) {
+          pages.add(
+            _ShellPage(
+              SettingsSection.costCenters.title,
+              SettingsSection.costCenters.icon,
+              () => ReferenceSettingsScreen(
+                repository: widget.workspace.settings!,
+                section: SettingsSection.costCenters,
+                canManage: workspace.permissions.contains('SETTINGS_MANAGE'),
+                canOpenCenter: workspace.permissions.contains(
+                  'CONTRACTOR_EXTRACT_APPROVE',
+                ),
+                canViewContract: workspace.permissions.contains(
+                  'CLIENT_CONTRACT_VIEW',
+                ),
               ),
             ),
           );
@@ -286,6 +252,195 @@ class _WorkspaceShellState extends State<WorkspaceShell>
             ),
           );
         }
+        final crm = widget.workspace.crm;
+        if (crm != null) {
+          if (workspace.permissions.contains('CRM_INSPECTION_DASHBOARD')) {
+            pages.add(
+              _ShellPage(
+                'لوحة المعاينات',
+                LucideIcons.chartNoAxesCombined,
+                () => InspectionDashboardScreen(
+                  repository: crm,
+                  permissions: workspace.permissions,
+                  onOpenAll: () => _selectPage(pages, 'المعاينات'),
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('CRM_INSPECTION_OWN') ||
+              workspace.permissions.contains('CRM_INSPECTION_MANAGE') ||
+              workspace.permissions.contains('CRM_LEAD_VIEW')) {
+            pages.add(
+              _ShellPage(
+                'المعاينات',
+                LucideIcons.mapPinned,
+                () => InspectionsScreen(
+                  repository: crm,
+                  permissions: workspace.permissions,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('CRM_LEAD_VIEW') ||
+              workspace.permissions.contains('CRM_LEAD_MANAGE')) {
+            pages.add(
+              _ShellPage(
+                'متابعات اليوم',
+                LucideIcons.clock3,
+                () => FollowUpsTodayScreen(
+                  repository: crm,
+                  permissions: workspace.permissions,
+                ),
+              ),
+            );
+            pages.add(
+              _ShellPage(
+                'العملاء',
+                LucideIcons.contact,
+                () => LeadsScreen(
+                  repository: crm,
+                  permissions: workspace.permissions,
+                  meetings: widget.workspace.meetings,
+                ),
+              ),
+            );
+          }
+        }
+        if (widget.workspace.meetings != null) {
+          pages.add(
+            _ShellPage(
+              'الاجتماعات',
+              LucideIcons.calendarCheck,
+              () => MeetingsScreen(repository: widget.workspace.meetings!),
+            ),
+          );
+        }
+        final scm = widget.workspace.scm;
+        if (scm != null) {
+          final catalogAccess =
+              workspace.permissions.contains('SETTINGS_VIEW') ||
+              workspace.permissions.contains('SETTINGS_MANAGE') ||
+              workspace.permissions.contains('ESTIMATION_VIEW') ||
+              workspace.permissions.contains('ESTIMATION_MANAGE');
+          final hasScm = workspace.permissions.any(
+            (permission) => permission.startsWith('SCM_'),
+          );
+          if (catalogAccess || hasScm) {
+            pages.add(
+              _ShellPage(
+                'الخامات',
+                LucideIcons.packageOpen,
+                () => ScmMaterialsScreen(
+                  repository: scm,
+                  canManage: workspace.permissions.contains('SETTINGS_MANAGE'),
+                  catalogAccess: catalogAccess,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_REQUESTS_CREATE') ||
+              workspace.permissions.contains('SCM_REQUESTS_VIEW') ||
+              workspace.permissions.contains('SCM_REQUESTS_APPROVE')) {
+            pages.add(
+              _ShellPage(
+                'طلبات الشراء',
+                LucideIcons.clipboardList,
+                () => ScmDocumentsScreen(
+                  repository: scm,
+                  kind: ScmDocumentKind.requests,
+                  permissions: workspace.permissions,
+                  currentUserId: widget.auth.user!.id,
+                  workflow: widget.workspace.workflow,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_ORDERS_VIEW') ||
+              workspace.permissions.contains('SCM_ORDERS_MANAGE') ||
+              workspace.permissions.contains('SCM_ORDERS_APPROVE')) {
+            pages.add(
+              _ShellPage(
+                'أوامر الشراء',
+                LucideIcons.fileCheck2,
+                () => ScmDocumentsScreen(
+                  repository: scm,
+                  kind: ScmDocumentKind.orders,
+                  permissions: workspace.permissions,
+                  currentUserId: widget.auth.user!.id,
+                  workflow: widget.workspace.workflow,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_RECEIPTS_RECEIVE') ||
+              workspace.permissions.contains('SCM_RECEIPTS_VIEW')) {
+            pages.add(
+              _ShellPage(
+                'أوامر الاستلام',
+                LucideIcons.packageCheck,
+                () => ScmDocumentsScreen(
+                  repository: scm,
+                  kind: ScmDocumentKind.receipts,
+                  permissions: workspace.permissions,
+                  currentUserId: widget.auth.user!.id,
+                  workflow: widget.workspace.workflow,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_CASH_PURCHASES_CREATE') ||
+              workspace.permissions.contains('SCM_CASH_PURCHASES_VIEW')) {
+            pages.add(
+              _ShellPage(
+                'الفواتير النقدية',
+                LucideIcons.receiptText,
+                () => ScmDocumentsScreen(
+                  repository: scm,
+                  kind: ScmDocumentKind.cashPurchases,
+                  permissions: workspace.permissions,
+                  currentUserId: widget.auth.user!.id,
+                  workflow: widget.workspace.workflow,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_STOCK_VIEW')) {
+            pages.add(
+              _ShellPage(
+                'أرصدة المخازن',
+                LucideIcons.boxes,
+                () => ScmStockScreen(repository: scm),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_SETTINGS_MANAGE')) {
+            pages.add(
+              _ShellPage(
+                'المخازن',
+                LucideIcons.warehouse,
+                () => ScmDirectoryScreen(
+                  repository: scm,
+                  kind: ScmDirectoryKind.warehouses,
+                ),
+              ),
+            );
+          }
+          if (workspace.permissions.contains('SCM_SETTINGS_MANAGE') ||
+              workspace.permissions.contains('SCM_ORDERS_VIEW') ||
+              workspace.permissions.contains('SCM_ORDERS_MANAGE') ||
+              workspace.permissions.contains('SCM_ORDERS_APPROVE')) {
+            pages.add(
+              _ShellPage(
+                'الموردون',
+                LucideIcons.truck,
+                () => ScmDirectoryScreen(
+                  repository: scm,
+                  kind: ScmDirectoryKind.suppliers,
+                ),
+              ),
+            );
+          }
+        }
         if (workspace.permissions.contains('SETTINGS_VIEW') &&
             widget.workspace.settings != null) {
           final canManage = workspace.permissions.contains('SETTINGS_MANAGE');
@@ -293,7 +448,6 @@ class _WorkspaceShellState extends State<WorkspaceShell>
             SettingsSection.expenseCategories,
             SettingsSection.units,
             SettingsSection.contractors,
-            SettingsSection.costCenters,
           ]) {
             pages.add(
               _ShellPage(
@@ -303,17 +457,51 @@ class _WorkspaceShellState extends State<WorkspaceShell>
                   repository: widget.workspace.settings!,
                   section: section,
                   canManage: canManage,
+                  canOpenCenter: workspace.permissions.contains(
+                    'CONTRACTOR_EXTRACT_APPROVE',
+                  ),
+                  canViewContract: workspace.permissions.contains(
+                    'CLIENT_CONTRACT_VIEW',
+                  ),
                 ),
               ),
             );
           }
+        }
+        final users = widget.workspace.users;
+        if (users != null && workspace.permissions.contains('USERS_VIEW')) {
+          final activeRole = workspace.memberships
+              .where(
+                (membership) =>
+                    membership.companyId == workspace.activeCompanyId,
+              )
+              .firstOrNull
+              ?.roleCode;
+          pages.add(
+            _ShellPage(
+              'المستخدمون',
+              LucideIcons.usersRound,
+              () => UsersScreen(
+                key: ValueKey('users-${workspace.activeCompanyId}'),
+                repository: users,
+                currentUserId: widget.auth.user!.id,
+                currentRoleCode: activeRole,
+                activeCompanyId: workspace.activeCompanyId,
+                canManage: workspace.permissions.contains('USERS_MANAGE'),
+                permissions: workspace.permissions,
+              ),
+            ),
+          );
         }
         if (pages.isEmpty) {
           return const Scaffold(
             body: Center(child: Text('لا توجد شاشات متاحة لهذا المستخدم')),
           );
         }
-        if (_index >= pages.length) _index = 0;
+        if (_index >= pages.length) {
+          _index = 0;
+          _pageHistory.clear();
+        }
         final selectedPage = pages[_index];
         final pendingPushKind = _pendingPushKind;
         if (pendingPushKind != null) {
@@ -322,67 +510,81 @@ class _WorkspaceShellState extends State<WorkspaceShell>
             if (mounted) _openPushKind(pendingPushKind, pages);
           });
         }
-        return Scaffold(
-          // Keep the wide table viewport stable in landscape. Scrollable pages
-          // add the keyboard inset themselves so focused fields remain reachable.
-          resizeToAvoidBottomInset: false,
-          drawer: _WorkspaceDrawer(
-            workspace: workspace,
-            tenantLogo: widget.workspace.tenantLogo,
-            userName: widget.auth.user!.name,
-            pages: pages,
-            selectedIndex: _index,
-            onSelectPage: (index) {
-              Navigator.of(context).pop();
-              setState(() {
-                _index = index;
-                if (pages[index].label != 'العهدة') _selectedOwner = null;
-                _custodyTab = CustodyTab.moves;
-              });
-            },
-            onLogout: widget.auth.submitting
-                ? null
-                : () async {
-                    Navigator.of(context).pop();
-                    final push = widget.pushNotifications;
-                    final auth = widget.auth;
-                    final workspace = widget.workspace;
-                    final unbind = push?.unbindAuthenticatedUser();
-                    final logout = auth.logout();
-                    workspace.reset();
-                    await Future.wait<void>([?unbind, logout]);
-                  },
-          ),
-          body: SafeArea(
-            top: true,
-            child: Column(
-              children: [
-                Builder(
-                  builder: (headerContext) => _CompanyHeader(
-                    workspace: workspace,
-                    switching: widget.workspace.switchingCompany,
-                    notificationCount: _notificationCount,
-                    onOpenMenu: () => Scaffold.of(headerContext).openDrawer(),
-                    notificationRepository: widget.workspace.notifications,
-                    onNotificationSelected: (notification) =>
-                        _handleNotification(notification, pages),
-                    onNotificationCountChanged: (count) {
-                      if (mounted) setState(() => _notificationCount = count);
+        return PopScope<Object?>(
+          canPop: _pageHistory.isEmpty,
+          onPopInvokedWithResult: (didPop, _) {
+            if (didPop) return;
+            final scaffold = _scaffoldKey.currentState;
+            if (scaffold?.isDrawerOpen ?? false) {
+              scaffold!.closeDrawer();
+              return;
+            }
+            _navigateBack(pages);
+          },
+          child: Scaffold(
+            key: _scaffoldKey,
+            // Keep the wide table viewport stable in landscape. Scrollable pages
+            // add the keyboard inset themselves so focused fields remain reachable.
+            resizeToAvoidBottomInset: false,
+            drawer: _WorkspaceDrawer(
+              workspace: workspace,
+              tenantLogo: widget.workspace.tenantLogo,
+              userName: widget.auth.user!.name,
+              pages: pages,
+              selectedIndex: _index,
+              onSelectPage: (index) {
+                Navigator.of(context).pop();
+                _selectPageAt(pages, index);
+              },
+              onLogout: widget.auth.submitting
+                  ? null
+                  : () async {
+                      Navigator.of(context).pop();
+                      final push = widget.pushNotifications;
+                      final auth = widget.auth;
+                      final workspace = widget.workspace;
+                      final unbind = push?.unbindAuthenticatedUser();
+                      final logout = auth.logout();
+                      workspace.reset();
+                      await Future.wait<void>([?unbind, logout]);
                     },
-                    onSelectCompany: workspace.memberships.length > 1
-                        ? _selectCompany
-                        : null,
-                  ),
-                ),
-                Expanded(
-                  child: KeyedSubtree(
-                    key: ValueKey(
-                      '${workspace.activeCompanyId}-${selectedPage.label}',
+            ),
+            body: SafeArea(
+              top: true,
+              child: Column(
+                children: [
+                  Builder(
+                    builder: (headerContext) => _CompanyHeader(
+                      workspace: workspace,
+                      switching: widget.workspace.switchingCompany,
+                      notificationCount: _notificationCount,
+                      onOpenMenu: () => Scaffold.of(headerContext).openDrawer(),
+                      onBack: _pageHistory.isEmpty
+                          ? null
+                          : () => _navigateBack(pages),
+                      notificationRepository: widget.workspace.notifications,
+                      onNotificationSelected: (notification) =>
+                          _handleNotification(notification, pages),
+                      onNotificationCountChanged: (count) {
+                        if (mounted) {
+                          setState(() => _notificationCount = count);
+                        }
+                      },
+                      onSelectCompany: workspace.memberships.length > 1
+                          ? _selectCompany
+                          : null,
                     ),
-                    child: selectedPage.builder(),
                   ),
-                ),
-              ],
+                  Expanded(
+                    child: KeyedSubtree(
+                      key: ValueKey(
+                        '${workspace.activeCompanyId}-${selectedPage.label}',
+                      ),
+                      child: selectedPage.builder(),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -392,7 +594,34 @@ class _WorkspaceShellState extends State<WorkspaceShell>
 
   void _selectPage(List<_ShellPage> pages, String label) {
     final index = pages.indexWhere((page) => page.label == label);
-    if (index >= 0) setState(() => _index = index);
+    if (index >= 0) _selectPageAt(pages, index);
+  }
+
+  void _selectPageAt(List<_ShellPage> pages, int index) {
+    if (index == _index) return;
+    setState(() {
+      final currentLabel = pages[_index].label;
+      if (_pageHistory.lastOrNull != currentLabel) {
+        _pageHistory.add(currentLabel);
+      }
+      _index = index;
+      if (pages[index].label != 'العهدة') _selectedOwner = null;
+      _custodyTab = CustodyTab.moves;
+    });
+  }
+
+  void _navigateBack(List<_ShellPage> pages) {
+    while (_pageHistory.isNotEmpty) {
+      final label = _pageHistory.removeLast();
+      final index = pages.indexWhere((page) => page.label == label);
+      if (index < 0 || index == _index) continue;
+      setState(() {
+        _index = index;
+        if (pages[index].label != 'العهدة') _selectedOwner = null;
+        _custodyTab = CustodyTab.moves;
+      });
+      return;
+    }
   }
 
   Future<void> _selectCompany(String companyId) async {
@@ -402,6 +631,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
     if (changed) {
       setState(() {
         _index = 0;
+        _pageHistory.clear();
         _selectedOwner = null;
       });
       _loadNotifications();
@@ -429,6 +659,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
     final event = widget.pushNotifications?.takeEvent();
     if (event == null || !mounted) return;
     _loadNotifications();
+    unawaited(widget.workspace.refreshApprovals());
     if (event.opened) {
       _openPushEvent(event);
       return;
@@ -627,31 +858,6 @@ class _WorkspaceShellState extends State<WorkspaceShell>
       _selectPage(pages, 'العهدة');
     } else if (kind.startsWith('TREASURY_') || kind == 'CUSTODY_RETURNED') {
       _selectPage(pages, 'الخزن');
-    } else if (kind == 'HR_REQUEST_APPROVED' ||
-        kind == 'HR_REQUEST_REJECTED' ||
-        kind == 'HR_REQUEST_CANCELLED') {
-      _selectPage(pages, 'الطلبات');
-    } else if (kind == 'HR_TIMESHEET') {
-      _selectPage(pages, 'سجل الحضور');
-    } else if (kind == 'HR_DEVICE_PENDING' || kind == 'HR_PUNCH_PENDING') {
-      const label = 'موافقات الحضور';
-      if (pages.any((page) => page.label == label)) {
-        _selectPage(pages, label);
-        widget.workspace.refreshApprovals();
-      } else {
-        // The first item for a new manager: the screen shows once it is known.
-        widget.workspace.refreshApprovals().then((_) {
-          if (mounted && widget.workspace.approvals.decides) {
-            setState(() => _pendingPushKind = kind);
-          }
-        });
-      }
-    } else if (kind == 'HR_DEVICE_APPROVED' ||
-        kind == 'HR_DEVICE_REJECTED' ||
-        kind == 'HR_DEVICE_REMOVED' ||
-        kind == 'HR_PUNCH_APPROVED' ||
-        kind == 'HR_PUNCH_REJECTED') {
-      _selectPage(pages, 'الحضور والانصراف');
     } else if (kind.startsWith('CONTRACTOR_EXTRACT_')) {
       _selectPage(pages, 'المستخلصات');
     } else if (kind.startsWith('EXPENSE_') ||
@@ -756,6 +962,7 @@ class _CompanyHeader extends StatefulWidget {
     required this.switching,
     required this.notificationCount,
     required this.onOpenMenu,
+    required this.onBack,
     required this.notificationRepository,
     required this.onNotificationSelected,
     required this.onNotificationCountChanged,
@@ -766,6 +973,7 @@ class _CompanyHeader extends StatefulWidget {
   final bool switching;
   final int notificationCount;
   final VoidCallback onOpenMenu;
+  final VoidCallback? onBack;
   final NotificationRepository? notificationRepository;
   final NotificationSelection onNotificationSelected;
   final ValueChanged<int> onNotificationCountChanged;
@@ -931,6 +1139,15 @@ class _CompanyHeaderState extends State<_CompanyHeader> {
                 onPressed: widget.onOpenMenu,
               ),
             ),
+            if (widget.onBack != null)
+              PositionedDirectional(
+                start: 62,
+                child: _HeaderControl(
+                  tooltip: 'رجوع',
+                  icon: LucideIcons.arrowRight,
+                  onPressed: widget.onBack!,
+                ),
+              ),
             PositionedDirectional(
               end: 12,
               child: CompositedTransformTarget(
@@ -944,7 +1161,10 @@ class _CompanyHeaderState extends State<_CompanyHeader> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 64),
+              padding: EdgeInsetsDirectional.only(
+                start: widget.onBack == null ? 64 : 114,
+                end: 64,
+              ),
               child: widget.switching
                   ? SizedBox(
                       width: 20,
@@ -980,13 +1200,11 @@ class _CompanyHeaderState extends State<_CompanyHeader> {
                                       color: tokens.brandStrong,
                                       borderRadius: BorderRadius.circular(10),
                                     ),
-                                    child: Text(
-                                      name.isEmpty ? '' : name.characters.first,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w800,
-                                      ),
+                                    child: const Icon(
+                                      LucideIcons.building2,
+                                      key: ValueKey('company-header-icon'),
+                                      color: Colors.white,
+                                      size: 18,
                                     ),
                                   ),
                                   const SizedBox(width: 9),
@@ -1076,53 +1294,40 @@ class _WorkspaceDrawer extends StatefulWidget {
 
 class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
   static const _settingsLabels = {
+    'المستخدمون',
     'بنود الصرف',
     'وحدات القياس',
     'المقاولون',
-    'مراكز التكلفة',
   };
+  static const _projectLabels = {'مراكز التكلفة'};
   static const _custodyLabels = {'العهدة', 'طلبات العهدة', 'مجمع العهد'};
   static const _financeLabels = {'الخزن', 'المستخلصات'};
-  static const _hrLabels = {
-    'لوحة الموارد البشرية',
-    'الحضور',
-    'الطلبات',
-    'قسائم المرتب',
-    'ملف الموظف',
+  static const _scmLabels = {
+    'الخامات',
+    'طلبات الشراء',
+    'أوامر الشراء',
+    'أوامر الاستلام',
+    'الفواتير النقدية',
+    'أرصدة المخازن',
+    'المخازن',
+    'الموردون',
   };
-
+  static const _crmLabels = {
+    'لوحة المعاينات',
+    'المعاينات',
+    'متابعات اليوم',
+    'العملاء',
+    'الاجتماعات',
+  };
   String? _openGroup;
   String _query = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _openGroup = _initialGroup();
-  }
-
-  @override
-  void didUpdateWidget(covariant _WorkspaceDrawer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedIndex != widget.selectedIndex) {
-      final selectedGroup = _groupFor(widget.pages[widget.selectedIndex].label);
-      if (selectedGroup != null) _openGroup = selectedGroup;
-    }
-  }
-
-  String? _initialGroup() {
-    final selected = _groupFor(widget.pages[widget.selectedIndex].label);
-    if (selected != null) return selected;
-    for (final page in widget.pages) {
-      final group = _groupFor(page.label);
-      if (group != null) return group;
-    }
-    return null;
-  }
-
   String? _groupFor(String label) {
-    if (_hrLabels.contains(label)) return 'hr';
     if (_custodyLabels.contains(label)) return 'custody';
     if (_financeLabels.contains(label)) return 'finance';
+    if (_scmLabels.contains(label)) return 'scm';
+    if (_crmLabels.contains(label)) return 'crm';
+    if (_projectLabels.contains(label)) return 'projects';
     if (_settingsLabels.contains(label)) return 'settings';
     return null;
   }
@@ -1171,12 +1376,14 @@ class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
       ];
       final (label, subtitle, icon) = switch (group) {
         'finance' => ('المالية', 'الحسابات والخزن', LucideIcons.landmark),
-        'settings' => ('الإعدادات', 'البيانات الأساسية', LucideIcons.settings),
-        'hr' => (
-          'الموارد البشرية',
-          'الخدمات الذاتية للموظف',
-          LucideIcons.users,
+        'scm' => ('المشتريات', 'المخازن والخامات', LucideIcons.packageSearch),
+        'crm' => ('العملاء', 'المعاينات والمتابعة', LucideIcons.contact),
+        'projects' => (
+          'إدارة المشروعات',
+          'المشروعات والتكاليف',
+          LucideIcons.briefcase,
         ),
+        'settings' => ('الإعدادات', 'البيانات الأساسية', LucideIcons.settings),
         _ => ('العهد', 'إدارة العهد', LucideIcons.wallet),
       };
       final expanded = _openGroup == group;
@@ -1305,22 +1512,27 @@ class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    'Monetizer',
-                    style: TextStyle(
-                      color: tokens.brandStrong,
-                      fontSize: 26,
-                      fontWeight: FontWeight.w800,
+                  SizedBox(
+                    width: tenantLogo == null ? 220 : 110,
+                    height: tenantLogo == null ? 42 : 32,
+                    child: Image.asset(
+                      'assets/images/monetizer-logo.png',
+                      key: const ValueKey('sidebar-app-logo'),
+                      fit: BoxFit.contain,
                     ),
                   ),
-                  const Spacer(),
-                  if (tenantLogo != null)
+                  if (tenantLogo != null) ...[
+                    const SizedBox(width: 10),
+                    Container(width: 1, height: 34, color: tokens.line),
+                    const SizedBox(width: 10),
                     SizedBox(
-                      width: 48,
-                      height: 48,
+                      width: 44,
+                      height: 44,
                       child: Image.memory(tenantLogo, fit: BoxFit.contain),
                     ),
+                  ],
                 ],
               ),
             ),
@@ -1401,6 +1613,10 @@ class _WorkspaceDrawerState extends State<_WorkspaceDrawer> {
                   ),
                 ],
               ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: PublicLinks(color: tokens.muted),
             ),
           ],
         ),

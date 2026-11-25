@@ -63,6 +63,16 @@ void main() {
     expect(find.text('الوارد'), findsOneWidget);
     expect(find.text('الرصيد الختامي'), findsOneWidget);
     expect(find.text('50,000.00 EGP'), findsWidgets);
+    final reverseButtons = find.widgetWithText(OutlinedButton, 'عكس');
+    expect(reverseButtons, findsWidgets);
+    expect(
+      tester.getSize(reverseButtons.first).width,
+      greaterThanOrEqualTo(88),
+    );
+    expect(
+      tester.getSize(reverseButtons.first).height,
+      greaterThanOrEqualTo(44),
+    );
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/treasury_ledger_390x844.png'),
@@ -158,6 +168,13 @@ void main() {
     expect(find.text('تحويل إلى عهدة'), findsOneWidget);
     expect(find.text('إيداع بالخزنة'), findsWidgets);
     expect(find.text('تصحيح رصيد'), findsOneWidget);
+    final quickActionTitle = tester.widget<Text>(find.text('إضافة صرف مباشر'));
+    expect(quickActionTitle.style?.fontSize, 12.5);
+    final quickActionButton = find.ancestor(
+      of: find.text('إضافة صرف مباشر'),
+      matching: find.byType(InkWell),
+    );
+    expect(tester.getSize(quickActionButton).height, greaterThanOrEqualTo(80));
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/treasury_quick_actions_390x844.png'),
@@ -287,7 +304,7 @@ class _FakeTreasuryRepository extends TreasuryRepository {
         operationId: 'operation-1',
         referenceNo: 'TRX-001',
         type: 'DEPOSIT',
-        status: 'POSTED',
+        status: 'EXECUTED',
         direction: 'IN',
         amount: '5000.00',
         currencyCode: 'EGP',

@@ -1,5 +1,6 @@
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_error.dart';
+import '../../../core/format/exact_decimal.dart';
 import '../domain/extract_models.dart';
 
 class ExtractRepository {
@@ -29,47 +30,115 @@ class ExtractRepository {
         .toList(growable: false);
   }
 
-  Future<void> create({
+  Future<ContractorExtract> get(String id) async => ContractorExtract.fromJson(
+    requireMap(await _client.get('/contractor-extracts/$id')),
+  );
+
+  Future<ContractorExtract> create({
     required String contractorId,
     required String centerId,
     required String extractDate,
-    required List<QuantityLineInput> items,
+    required List<ExtractLineInput> items,
     String? note,
   }) async {
+    return ContractorExtract.fromJson(
+      requireMap(
+        await _client.postJson('/contractor-extracts', {
+          'contractorId': contractorId,
+          'centerId': centerId,
+          'extractDate': extractDate,
+          'note': note?.trim().isEmpty == true ? null : note?.trim(),
+          'items': items.map((item) => item.toJson()).toList(),
+        }),
+      ),
+    );
+  }
+
+  Future<ContractorExtract> update({
+    required ContractorExtract extract,
+    required String extractDate,
+    required List<ExtractLineInput> items,
+    String? note,
+  }) async => ContractorExtract.fromJson(
     requireMap(
-      await _client.postJson('/contractor-extracts', {
-        'contractorId': contractorId,
-        'centerId': centerId,
+      await _client.putJson('/contractor-extracts/${extract.id}', {
+        'contractorId': extract.contractorId,
+        'centerId': extract.centerId,
         'extractDate': extractDate,
         'note': note?.trim().isEmpty == true ? null : note?.trim(),
         'items': items.map((item) => item.toJson()).toList(),
-      }),
-    );
-  }
-
-  Future<void> priceAndApprove({
-    required ContractorExtract extract,
-    required List<PriceLineInput> items,
-  }) async {
-    requireMap(
-      await _client
-          .postJson('/contractor-extracts/${extract.id}/price-and-approve', {
-            'version': extract.version,
-            'items': items.map((item) => item.toJson()).toList(),
-          }),
-    );
-  }
-
-  Future<void> reject({
-    required ContractorExtract extract,
-    required String reason,
-  }) async {
-    requireMap(
-      await _client.postJson('/contractor-extracts/${extract.id}/review', {
-        'decision': 'REJECTED',
-        'reason': reason.trim(),
         'version': extract.version,
       }),
+    ),
+  );
+
+  Future<void> recordMeasurement({
+    required String extractId,
+    required Map<String, String> percentages,
+  }) async {
+    requireList(
+      await _client.postJson('/contractor-extracts/$extractId/measurements', {
+        'items': percentages.entries
+            .map((entry) => {'itemId': entry.key, 'percentage': entry.value})
+            .toList(),
+      }),
     );
   }
+
+  Future<void> reviewMeasurements({
+    required String extractId,
+    required List<String> ids,
+    required String decision,
+  }) async {
+    requireList(
+      await _client.postJson(
+        '/contractor-extracts/$extractId/measurements/review',
+        {'measurementIds': ids, 'decision': decision},
+      ),
+    );
+  }
+
+  Future<ContractorExtract> addItem({
+    required String extractId,
+    required AddedExtractItemInput item,
+  }) async => ContractorExtract.fromJson(
+    requireMap(
+      await _client.postJson(
+        '/contractor-extracts/$extractId/items',
+        item.toJson(),
+      ),
+    ),
+  );
+
+  Future<ContractorExtract> reviewItem({
+    required String extractId,
+    required String itemId,
+    required String decision,
+    String? rate,
+    String? clientRate,
+  }) async => ContractorExtract.fromJson(
+    requireMap(
+      await _client
+          .postJson('/contractor-extracts/$extractId/items/$itemId/review', {
+            'decision': decision,
+            if (rate != null) 'rate': ExactDecimal.parse(rate).toString(),
+            if (clientRate != null)
+              'clientRate': ExactDecimal.parse(clientRate).toString(),
+          }),
+    ),
+  );
+
+  Future<ContractorExtract> review({
+    required ContractorExtract extract,
+    required String decision,
+    String? reason,
+  }) async => ContractorExtract.fromJson(
+    requireMap(
+      await _client.postJson('/contractor-extracts/${extract.id}/review', {
+        'decision': decision,
+        if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim(),
+        'version': extract.version,
+      }),
+    ),
+  );
 }

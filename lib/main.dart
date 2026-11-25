@@ -6,14 +6,18 @@ import 'features/auth/application/auth_controller.dart';
 import 'features/auth/data/auth_repository.dart';
 import 'features/auth/data/biometric_auth_coordinator.dart';
 import 'features/custody/data/custody_repository.dart';
+import 'features/dashboard/data/dashboard_repository.dart';
+import 'features/crm/data/crm_repository.dart';
+import 'features/meetings/data/meetings_repository.dart';
 import 'features/extracts/data/extract_repository.dart';
 import 'features/notifications/data/notification_repository.dart';
 import 'features/notifications/application/push_notification_service.dart';
 import 'features/settings/data/settings_repository.dart';
+import 'features/scm/data/scm_repository.dart';
 import 'features/treasury/data/treasury_repository.dart';
+import 'features/users/data/users_repository.dart';
+import 'features/workflow/data/workflow_repository.dart';
 import 'features/workspace/application/workspace_controller.dart';
-import 'features/hr/application/punch_sensors.dart';
-import 'features/hr/data/hr_repository.dart';
 import 'features/workspace/data/workspace_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -38,8 +42,12 @@ Future<void> main() async {
       extracts: ExtractRepository(client),
       notifications: notificationRepository,
       treasury: TreasuryRepository(client),
-      hr: HrRepository(client),
-      punchSensors: DevicePunchSensors(preferences),
+      scm: ScmRepository(client),
+      crm: CrmRepository(client),
+      meetings: MeetingsRepository(client),
+      workflow: WorkflowRepository(client),
+      users: UsersRepository(client),
+      dashboard: DashboardRepository(client),
     );
     controller.onSessionEnded = () {
       workspace.reset();

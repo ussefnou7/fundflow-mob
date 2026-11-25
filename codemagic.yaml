@@ -1,0 +1,70 @@
+# Codemagic builds for the store. iOS needs no Mac: Codemagic signs with the
+# App Store Connect API key and uploads to TestFlight.
+#
+# One-time setup in the Codemagic web app (README → "iOS builds on Codemagic"):
+#   1. Team integrations → Developer Portal: add an App Store Connect API key
+#      (App Manager role) and name it `monetizer_asc`.
+#   2. App → Environment variables: group `monetizer_ios` with
+#      API_BASE_URL (https://fundflow-production-bb03d785.up.railway.app),
+#      WEB_BASE_URL (https://fundflow-stg.up.railway.app, serves /privacy and
+#      /support) and APP_STORE_APPLE_ID (the app's
+#      numeric Apple ID from App Store Connect → App Information).
+#   3. Start the workflow by hand, or push a tag like v1.0.0.
+
+workflows:
+  ios-release:
+    name: iOS release → TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: monetizer_asc
+    environment:
+      flutter: 3.41.5
+      xcode: latest
+      cocoapods: default
+      groups:
+        - monetizer_ios
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.monetizer.app
+    triggering:
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+          include: true
+    scripts:
+      - name: Check the server address
+        script: |
+          for name in API_BASE_URL WEB_BASE_URL; do
+            case "${!name}" in
+              https://*) echo "$name is set" ;;
+              *) echo "$name must be an https:// address (group monetizer_ios)"; exit 1 ;;
+            esac
+          done
+      - name: Get packages
+        script: flutter pub get
+      - name: Generate the iOS project files
+        script: flutter build ios --config-only --release --no-codesign --dart-define=API_BASE_URL="$API_BASE_URL" --dart-define=WEB_BASE_URL="$WEB_BASE_URL"
+      - name: Install pods
+        script: cd ios && pod install --repo-update
+      - name: Apply signing profiles
+        script: xcode-project use-profiles
+      - name: Build the ipa
+        script: |
+          # One above the latest TestFlight build; 1 for the very first upload.
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" 2>/dev/null || echo 0)
+          BUILD_NUMBER=$((LATEST + 1))
+          echo "Build number $BUILD_NUMBER"
+          flutter build ipa --release \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define=API_BASE_URL="$API_BASE_URL" \
+            --dart-define=WEB_BASE_URL="$WEB_BASE_URL" \
+            --export-options-plist=/Users/builder/export_options.plist
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true

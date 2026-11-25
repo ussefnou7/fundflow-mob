@@ -13,14 +13,15 @@ import 'package:fundflow_mob/features/settings/domain/settings_models.dart';
 void main() {
   setUpAll(_loadFonts);
 
-  testWidgets('contractor extracts follow the mobile web design', (
-    tester,
-  ) async {
+  Future<void> pumpScreen(
+    WidgetTester tester, {
+    required Set<String> permissions,
+    required bool financialsVisible,
+  }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
-
     await tester.pumpWidget(
       MaterialApp(
         debugShowCheckedModeBanner: false,
@@ -30,12 +31,8 @@ void main() {
           child: Scaffold(
             body: SafeArea(
               child: ContractorExtractScreen(
-                repository: _FakeExtractRepository(),
-                permissions: const {
-                  'CONTRACTOR_EXTRACT_VIEW',
-                  'CONTRACTOR_EXTRACT_CREATE',
-                  'CONTRACTOR_EXTRACT_APPROVE',
-                },
+                repository: _FakeExtractRepository(financialsVisible),
+                permissions: permissions,
               ),
             ),
           ),
@@ -43,39 +40,152 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await tester.tap(find.text('المقاول أحمد').first);
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('manager sees pending measurement and added line', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      financialsVisible: true,
+      permissions: const {
+        'CONTRACTOR_EXTRACT_VIEW',
+        'CONTRACTOR_EXTRACT_CREATE',
+        'CONTRACTOR_EXTRACT_APPROVE',
+        'CONTRACTOR_EXTRACT_PRICES',
+        'CONTRACTOR_EXTRACT_CLIENT_PRICE',
+      },
+    );
 
     expect(find.text('مستخلصات المقاولين'), findsOneWidget);
     expect(find.text('مستخلص جديد'), findsOneWidget);
-    expect(find.text('بانتظار التسعير والاعتماد'), findsWidgets);
+    expect(find.text('بانتظار الاعتماد (2)'), findsOneWidget);
+    expect(find.text('← 80% معلّق'), findsOneWidget);
+    expect(find.text('بند مضاف'), findsOneWidget);
+    expect(find.text('سعر الوحدة'), findsOneWidget);
+    expect(find.text('تعديل المستخلص'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('extract-items-horizontal-scrollbar')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('extract-items-scroll-content')))
+          .width,
+      840,
+    );
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile('goldens/extracts_390x844.png'),
+      matchesGoldenFile('goldens/extracts_manager_390x844.png'),
     );
 
-    await tester.tap(find.text('مستخلص جديد'));
+    await tester.ensureVisible(find.text('تعديل المستخلص'));
+    await tester.tap(find.text('تعديل المستخلص'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('سجّل الكميات ووحدات القياس فقط — التسعير والاعتماد للمدير'),
-      findsOneWidget,
+    expect(find.text('حفظ التعديلات'), findsOneWidget);
+    final quantity = tester.widget<TextFormField>(
+      find.widgetWithText(TextFormField, 'الكمية *').first,
     );
+    final rate = tester.widget<TextFormField>(
+      find.widgetWithText(TextFormField, 'سعر المقاول *').first,
+    );
+    expect(quantity.controller?.text, '120');
+    expect(rate.controller?.text, '10');
+  });
+
+  testWidgets('engineer sees completion without money', (tester) async {
+    await pumpScreen(
+      tester,
+      financialsVisible: false,
+      permissions: const {
+        'CONTRACTOR_EXTRACT_VIEW',
+        'CONTRACTOR_EXTRACT_MEASURE',
+      },
+    );
+
+    expect(find.text('مستخلصات المقاولين'), findsOneWidget);
+    expect(find.text('مستخلص جديد'), findsNothing);
+    expect(find.text('الإنجاز'), findsOneWidget);
+    expect(find.text('سعر الوحدة'), findsNothing);
+    expect(find.text('الإجمالي'), findsNothing);
+    expect(find.text('متابعة التنفيذ والحصر'), findsOneWidget);
+    expect(find.text('رفع حصر جديد'), findsOneWidget);
     expect(find.text('إضافة بند'), findsOneWidget);
-    Navigator.of(tester.element(find.text('إلغاء').last)).pop();
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('المقاول أحمد').first);
-    await tester.pumpAndSettle();
-    expect(find.text('تسعير واعتماد'), findsOneWidget);
-    expect(find.text('رفض'), findsOneWidget);
-    expect(find.text('البند'), findsOneWidget);
-    expect(find.text('الكمية'), findsOneWidget);
-    expect(find.text('الوحدة'), findsOneWidget);
-    expect(find.text('سعر الوحدة'), findsOneWidget);
-    expect(find.text('الإجمالي'), findsOneWidget);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('extract-items-scroll-content')))
+          .width,
+      520,
+    );
+    expect(tester.takeException(), isNull);
     await expectLater(
       find.byType(MaterialApp),
-      matchesGoldenFile('goldens/extracts_expanded_390x844.png'),
+      matchesGoldenFile('goldens/extracts_engineer_390x844.png'),
     );
+
+    await tester.tap(find.text('رفع حصر جديد'));
+    await tester.pumpAndSettle();
+    expect(find.text('نفس النسبة لكل البنود'), findsOneWidget);
+    expect(find.text('حفظ الحصر (0 بنود)'), findsOneWidget);
+  });
+
+  testWidgets('engineer add item form accepts quantity and rate', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      financialsVisible: false,
+      permissions: const {
+        'CONTRACTOR_EXTRACT_VIEW',
+        'CONTRACTOR_EXTRACT_MEASURE',
+      },
+    );
+
+    await tester.ensureVisible(find.text('إضافة بند'));
+    await tester.tap(find.text('إضافة بند'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextFormField, 'الكمية *'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'سعر الوحدة *'), findsOneWidget);
+    expect(find.text('سيبقى البند بانتظار اعتماد المدير'), findsOneWidget);
+  });
+
+  testWidgets('create action uses create permission independently', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      financialsVisible: true,
+      permissions: const {
+        'CONTRACTOR_EXTRACT_VIEW',
+        'CONTRACTOR_EXTRACT_CREATE',
+        'CONTRACTOR_EXTRACT_PRICES',
+      },
+    );
+
+    expect(find.text('مستخلص جديد'), findsOneWidget);
+    expect(find.text('تعديل المستخلص'), findsOneWidget);
+    expect(find.text('إضافة بند'), findsNothing);
+  });
+
+  testWidgets('approval permission alone cannot create or edit an extract', (
+    tester,
+  ) async {
+    await pumpScreen(
+      tester,
+      financialsVisible: true,
+      permissions: const {
+        'CONTRACTOR_EXTRACT_VIEW',
+        'CONTRACTOR_EXTRACT_APPROVE',
+        'CONTRACTOR_EXTRACT_PRICES',
+      },
+    );
+
+    expect(find.text('مستخلص جديد'), findsNothing);
+    expect(find.text('تعديل المستخلص'), findsNothing);
+    expect(find.text('تسجيل حصر'), findsOneWidget);
   });
 }
 
@@ -90,8 +200,10 @@ Future<void> _loadFonts() async {
 }
 
 class _FakeExtractRepository extends ExtractRepository {
-  _FakeExtractRepository()
+  _FakeExtractRepository(this.financialsVisible)
     : super(ApiClient(dio: Dio(), cookieJar: CookieJar()));
+
+  final bool financialsVisible;
 
   static const contractor = ReferenceRecord(
     id: 'contractor-1',
@@ -132,7 +244,7 @@ class _FakeExtractRepository extends ExtractRepository {
   Future<List<ContractorExtract>> list({
     String? contractorId,
     String? centerId,
-  }) async => const [
+  }) async => [
     ContractorExtract(
       id: 'extract-1',
       contractorId: 'contractor-1',
@@ -141,10 +253,12 @@ class _FakeExtractRepository extends ExtractRepository {
       centerName: 'مشروع العاصمة',
       extractNo: 7,
       extractDate: '2026-10-26',
-      status: 'PENDING',
+      status: 'APPROVED',
       version: 2,
-      financialsVisible: true,
-      items: [
+      financialsVisible: financialsVisible,
+      net: financialsVisible ? '720.00' : null,
+      outstanding: financialsVisible ? '320.00' : null,
+      items: const [
         ExtractItem(
           id: 'item-1',
           kind: 'WORK',
@@ -153,6 +267,36 @@ class _FakeExtractRepository extends ExtractRepository {
           unitId: 'unit-1',
           unitName: 'متر مربع',
           quantity: '120',
+          rate: '10',
+          percentage: '0.60',
+          amount: '720',
+          pendingPercentage: '0.80',
+          pendingMeasurementId: 'measurement-1',
+        ),
+        ExtractItem(
+          id: 'item-2',
+          kind: 'WORK',
+          lineNo: 2,
+          description: 'أعمال معالجة إضافية',
+          unitId: 'unit-1',
+          unitName: 'متر مربع',
+          quantity: '20',
+          rate: '12',
+          percentage: '0',
+          amount: '0',
+          status: 'PENDING',
+        ),
+        ExtractItem(
+          id: 'item-3',
+          kind: 'WORK',
+          lineNo: 3,
+          description: 'أعمال الدهانات',
+          unitId: 'unit-1',
+          unitName: 'متر مربع',
+          quantity: '50',
+          rate: '8',
+          percentage: '0.25',
+          amount: '100',
         ),
       ],
     ),

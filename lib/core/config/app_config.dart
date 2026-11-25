@@ -23,11 +23,28 @@ class AppConfig {
     }
   }
 
-  /// The default is the workstation's Wi-Fi address (wlp3s0), not virbr0. If it
-  /// changes, or for an emulator (http://10.0.2.2:8080), override it with:
-  /// --dart-define=API_BASE_URL=http://<lan-ip>:8080
-  static const apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://192.168.1.17:8080',
+  /// The production server. Release builds use it unless API_BASE_URL is
+  /// given, so a store build never points at a workstation.
+  static const productionUrl =
+      'https://fundflow-production-bb03d785.up.railway.app';
+
+  /// The web app, which serves the public privacy and support pages the
+  /// stores require. `--dart-define=WEB_BASE_URL=https://<web-host>`
+  /// overrides it; an empty value hides the links.
+  static const webBaseUrl = String.fromEnvironment(
+    'WEB_BASE_URL',
+    defaultValue: 'https://fundflow-stg.up.railway.app',
   );
+
+  static const _override = String.fromEnvironment('API_BASE_URL');
+
+  /// Debug and profile default to the workstation's Wi-Fi address (wlp3s0),
+  /// never virbr0 (192.168.122.x), which a phone cannot reach. If it changes,
+  /// or for an emulator (http://10.0.2.2:8080), override it with:
+  /// `--dart-define=API_BASE_URL=http://<lan-ip>:8080`
+  static const apiBaseUrl = _override != ''
+      ? _override
+      : kReleaseMode
+      ? productionUrl
+      : 'http://192.168.1.28:8080';
 }

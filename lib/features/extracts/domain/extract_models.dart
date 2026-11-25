@@ -10,7 +10,11 @@ class ExtractItem {
     required this.unitId,
     required this.unitName,
     required this.quantity,
+    this.status = 'APPROVED',
+    this.pendingPercentage,
+    this.pendingMeasurementId,
     this.rate,
+    this.clientRate,
     this.percentage,
     this.amount,
   });
@@ -23,7 +27,11 @@ class ExtractItem {
     unitId: json['unitId'].toString(),
     unitName: json['unitName']?.toString() ?? '',
     quantity: json['quantity']?.toString() ?? '0',
+    status: json['status']?.toString() ?? 'APPROVED',
+    pendingPercentage: json['pendingPercentage']?.toString(),
+    pendingMeasurementId: json['pendingMeasurementId']?.toString(),
     rate: json['rate']?.toString(),
+    clientRate: json['clientRate']?.toString(),
     percentage: json['percentage']?.toString(),
     amount: json['amount']?.toString(),
   );
@@ -35,7 +43,11 @@ class ExtractItem {
   final String unitId;
   final String unitName;
   final String quantity;
+  final String status;
+  final String? pendingPercentage;
+  final String? pendingMeasurementId;
   final String? rate;
+  final String? clientRate;
   final String? percentage;
   final String? amount;
 }
@@ -138,41 +150,55 @@ class ExtractOptions {
           .toList(growable: false);
 }
 
-class QuantityLineInput {
-  const QuantityLineInput({
+class ExtractLineInput {
+  const ExtractLineInput({
     required this.kind,
     required this.description,
     required this.unitId,
     required this.quantity,
+    required this.rate,
+    this.percentage,
+    this.clientRate,
   });
 
   final String kind;
   final String description;
   final String unitId;
   final String quantity;
+  final String rate;
+  final String? percentage;
+  final String? clientRate;
 
   Map<String, dynamic> toJson() => {
     'kind': kind,
     'description': description.trim(),
     'unitId': unitId,
     'quantity': ExactDecimal.parse(quantity).toString(),
+    'rate': ExactDecimal.parse(rate).toString(),
+    if (percentage != null)
+      'percentage': ExactDecimal.parse(percentage!).toString(),
+    if (clientRate != null)
+      'clientRate': ExactDecimal.parse(clientRate!).toString(),
   };
 }
 
-class PriceLineInput {
-  const PriceLineInput({
-    required this.itemId,
+class AddedExtractItemInput {
+  const AddedExtractItemInput({
+    required this.description,
+    required this.unitId,
+    required this.quantity,
     required this.rate,
-    required this.percentage,
   });
 
-  final String itemId;
+  final String description;
+  final String unitId;
+  final String quantity;
   final String rate;
-  final String percentage;
 
   Map<String, dynamic> toJson() => {
-    'itemId': itemId,
+    'description': description.trim(),
+    'unitId': unitId,
+    'quantity': ExactDecimal.parse(quantity).toString(),
     'rate': ExactDecimal.parse(rate).toString(),
-    'percentage': ExactDecimal.parse(percentage).percent.toString(),
   };
 }

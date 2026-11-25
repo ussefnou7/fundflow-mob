@@ -7,6 +7,25 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:564786798970:android:b44d2ccfe982c89010f6c3",
+        "android_client_info": {
+          "package_name": "com.monetizer.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCoEcAVhU39dkxGuoU4Fn5f4Pi5DcoS7lg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:564786798970:android:a30018fdff9fcded10f6c3",
         "android_client_info": {
           "package_name": "org.smart.fundflow.mobile"

@@ -20,6 +20,7 @@ void main() {
     tester.view.physicalSize = const Size(390, 844);
     addTearDown(tester.view.resetDevicePixelRatio);
     addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetViewInsets);
 
     final controller = AuthController(_LoggedOutGateway());
     await controller.initialize();
@@ -38,8 +39,9 @@ void main() {
     await tester.pumpAndSettle();
     // Asset images decode off the test clock; wait so the wordmark is drawn.
     await tester.runAsync(() async {
-      final image = tester.widget<Image>(find.byType(Image)).image;
-      await precacheImage(image, tester.element(find.byType(Image)));
+      final imageFinder = find.byType(Image).first;
+      final image = tester.widget<Image>(imageFinder).image;
+      await precacheImage(image, tester.element(imageFinder));
     });
     await tester.pumpAndSettle();
 
@@ -47,6 +49,12 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/login_390x844.png'),
     );
+
+    final password = find.byType(TextFormField).at(2);
+    await tester.tap(password);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await tester.pumpAndSettle();
+    expect(tester.getRect(password).bottom, lessThanOrEqualTo(524));
   });
 }
 

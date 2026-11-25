@@ -28,7 +28,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('تسجيل الدخول'), findsNWidgets(2));
+    expect(find.text('بيانات الدخول'), findsOneWidget);
+    expect(find.text('تسجيل الدخول'), findsOneWidget);
     expect(find.text('كود العميل'), findsOneWidget);
     expect(find.text('اسم الدخول'), findsOneWidget);
     expect(find.text('كلمة المرور'), findsOneWidget);

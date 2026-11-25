@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/widgets/app_buttons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_filter.dart';
 import '../../../core/widgets/app_pagination.dart';
@@ -387,11 +388,7 @@ class _CustodyScreenState extends State<CustodyScreen> {
                 title: 'لا توجد حركات بعد',
                 message: 'أول ما تستلم تمويل أو تسجّل بند صرف، هيظهر هنا.',
                 action: _canAdd
-                    ? FilledButton.icon(
-                        onPressed: _addExpense,
-                        icon: const Icon(LucideIcons.plus, size: 18),
-                        label: const Text('إضافة بند'),
-                      )
+                    ? AppAddButton(label: 'إضافة بند', onPressed: _addExpense)
                     : null,
               ),
       ),
@@ -564,11 +561,7 @@ class _CustodyScreenState extends State<CustodyScreen> {
               ? 'لا توجد طلبات لم تُصرف'
               : 'لا توجد طلبات حتى الآن',
           message: 'اطلب عهدة جديدة وتابع موافقتها وصرفها من هنا.',
-          action: FilledButton.icon(
-            onPressed: _requestCustody,
-            icon: const Icon(LucideIcons.plus, size: 18),
-            label: const Text('طلب عهدة'),
-          ),
+          action: AppAddButton(label: 'طلب عهدة', onPressed: _requestCustody),
         ),
       ),
       if (page != null) ...[

@@ -5,8 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const _installationKey = 'fundflow.installationId';
 
-/// This app install's stable id. Device login registers it with the user, and
-/// attendance punches send the same id so HR can tell the approved phone.
+/// This app install's stable id. Device login registers it with the user.
 String installationIdOf(SharedPreferences prefs) {
   final existing = prefs.getString(_installationKey);
   if (existing != null && existing.isNotEmpty) return existing;

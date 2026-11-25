@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../../core/format/exact_decimal.dart';
+import '../../../core/widgets/app_buttons.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_filter.dart';
 import '../../../core/widgets/app_pagination.dart';
@@ -22,11 +22,19 @@ class ReferenceSettingsScreen extends StatefulWidget {
     required this.repository,
     required this.section,
     required this.canManage,
+    this.canOpenCenter = false,
+    this.canViewContract = false,
   });
 
   final SettingsRepository repository;
   final SettingsSection section;
   final bool canManage;
+
+  /// CONTRACTOR_EXTRACT_APPROVE: the centre file, as on the web.
+  final bool canOpenCenter;
+
+  /// CLIENT_CONTRACT_VIEW: the centre file's contract tab.
+  final bool canViewContract;
 
   @override
   State<ReferenceSettingsScreen> createState() =>
@@ -35,14 +43,7 @@ class ReferenceSettingsScreen extends StatefulWidget {
 
 /// Section-specific filters, as one value so the shared filter sheet can
 /// edit a draft of them.
-typedef _Filters = ({
-  String status,
-  String level,
-  String type,
-  String financial,
-  String payment,
-  int size,
-});
+typedef _Filters = ({String status, String level, String type, int size});
 
 class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
   final _searchController = TextEditingController();
@@ -58,7 +59,7 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
   String? _openedContractorId;
 
   static _Filters _empty(int size) =>
-      (status: '', level: '', type: '', financial: '', payment: '', size: size);
+      (status: '', level: '', type: '', size: size);
 
   bool get _isCenters => widget.section == SettingsSection.costCenters;
 
@@ -103,8 +104,6 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
         },
         type: _filters.type,
         subCategoriesOnly: _filters.level == 'sub',
-        financial: _filters.financial,
-        payment: _filters.payment,
         page: _page,
         size: _filters.size,
       );
@@ -148,11 +147,7 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
   }
 
   bool _active(_Filters f) =>
-      f.status.isNotEmpty ||
-      f.level.isNotEmpty ||
-      f.type.isNotEmpty ||
-      f.financial.isNotEmpty ||
-      f.payment.isNotEmpty;
+      f.status.isNotEmpty || f.level.isNotEmpty || f.type.isNotEmpty;
 
   String get _summary {
     final f = _filters;
@@ -160,8 +155,6 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
       if (f.status.isNotEmpty) _statusOptions[f.status],
       if (f.level.isNotEmpty) _levelOptions[f.level],
       if (f.type.isNotEmpty) _typeOptions[f.type],
-      if (f.financial.isNotEmpty) _financialOptions[f.financial],
-      if (f.payment.isNotEmpty) _paymentOptions[f.payment],
     ].whereType<String>().join(' · ');
   }
 
@@ -175,14 +168,7 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
       fields: (context, f, update) => AppFilterGrid(
         children: [
           _choice('الحالة', f.status, _statusOptions, (value) {
-            update((
-              status: value,
-              level: f.level,
-              type: f.type,
-              financial: f.financial,
-              payment: f.payment,
-              size: f.size,
-            ));
+            update((status: value, level: f.level, type: f.type, size: f.size));
           }),
           if (widget.section == SettingsSection.expenseCategories)
             _choice('المستوى', f.level, _levelOptions, (value) {
@@ -190,51 +176,24 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
                 status: f.status,
                 level: value,
                 type: f.type,
-                financial: f.financial,
-                payment: f.payment,
                 size: f.size,
               ));
             }),
-          if (_isCenters) ...[
+          if (_isCenters)
             _choice('النوع', f.type, _typeOptions, (value) {
               update((
                 status: f.status,
                 level: f.level,
                 type: value,
-                financial: f.financial,
-                payment: f.payment,
                 size: f.size,
               ));
             }),
-            _choice('الحركة', f.financial, _financialOptions, (value) {
-              update((
-                status: f.status,
-                level: f.level,
-                type: f.type,
-                financial: value,
-                payment: f.payment,
-                size: f.size,
-              ));
-            }),
-            _choice('السداد', f.payment, _paymentOptions, (value) {
-              update((
-                status: f.status,
-                level: f.level,
-                type: f.type,
-                financial: f.financial,
-                payment: value,
-                size: f.size,
-              ));
-            }),
-          ],
           appPageSizeField(
             value: f.size,
             onChanged: (size) => update((
               status: f.status,
               level: f.level,
               type: f.type,
-              financial: f.financial,
-              payment: f.payment,
               size: size,
             )),
           ),
@@ -249,7 +208,7 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
     await _load();
   }
 
-  Future<void> _edit([ReferenceRecord? record]) async {
+  Future<bool> _edit([ReferenceRecord? record]) async {
     final saved = await showAppSheet<bool>(
       context,
       builder: (context) => _ReferenceFormSheet(
@@ -263,7 +222,9 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('تم حفظ التغييرات بنجاح')));
       await _load();
+      return true;
     }
+    return false;
   }
 
   @override
@@ -280,7 +241,20 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
       return CostCenterDetailScreen(
         repository: widget.repository,
         centerId: _openedCenterId!,
-        onBack: () => setState(() => _openedCenterId = null),
+        canViewContract: widget.canViewContract,
+        onBack: () {
+          setState(() => _openedCenterId = null);
+          _load();
+        },
+        onEdit: widget.canManage
+            ? () async {
+                final record = _data?.items.firstWhere(
+                  (item) => item.id == _openedCenterId,
+                );
+                if (record == null) return false;
+                return _edit(record);
+              }
+            : null,
       );
     }
     final tokens = context.tokens;
@@ -300,15 +274,14 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
           PageHeader(
             title: widget.section.title,
             subtitle: _isCenters
-                ? 'صورة مالية لكل مشروع: الوارد والمنصرف ومديونية مستخلصات المقاولين.'
+                ? 'المشروعات والمراكز الإدارية. الأرقام المالية في ملف كل مركز.'
                 : data == null
                 ? null
                 : '${data.total} سجل',
             action: widget.canManage
-                ? FilledButton.icon(
+                ? AppAddButton(
+                    label: _isCenters ? 'مركز جديد' : 'إضافة',
                     onPressed: () => _edit(),
-                    icon: const Icon(LucideIcons.plus, size: 17),
-                    label: Text(_isCenters ? 'مركز جديد' : 'إضافة'),
                   )
                 : null,
           ),
@@ -378,15 +351,33 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
                 icon: filtered ? LucideIcons.searchX : widget.section.icon,
                 title: filtered ? 'لا توجد نتائج مطابقة' : 'لا توجد بيانات بعد',
                 action: !filtered && widget.canManage
-                    ? OutlinedButton.icon(
+                    ? AppAddButton(
+                        label: 'إضافة ${widget.section.singular}',
                         onPressed: () => _edit(),
-                        icon: const Icon(LucideIcons.plus, size: 17),
-                        label: Text('إضافة ${widget.section.singular}'),
+                        secondary: true,
                       )
                     : null,
               ),
             )
           else ...[
+            if (_isCenters)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${data.total} مركز تكلفة مطابق',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      'صفحة ${_page + 1} من ${(data.total / data.size).ceil()}',
+                      style: TextStyle(color: tokens.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
             for (final record in data.items) ...[
               RepaintBoundary(
                 child: _ReferenceCard(
@@ -398,9 +389,8 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
                     SettingsSection.contractors => () => setState(
                       () => _openedContractorId = record.id,
                     ),
-                    SettingsSection.costCenters => () => setState(
-                      () => _openedCenterId = record.id,
-                    ),
+                    SettingsSection.costCenters when widget.canOpenCenter =>
+                      () => setState(() => _openedCenterId = record.id),
                     _ => null,
                   },
                 ),
@@ -428,21 +418,6 @@ class _ReferenceSettingsScreenState extends State<ReferenceSettingsScreen> {
 const _statusOptions = {'': 'كل الحالات', 'true': 'نشط', 'false': 'غير نشط'};
 const _levelOptions = {'': 'البنود الرئيسية', 'sub': 'البنود الفرعية'};
 const _typeOptions = {'': 'كل الأنواع', 'PROJECT': 'مشروع', 'OFFICE': 'مكتب'};
-const _financialOptions = {
-  '': 'كل الحركات',
-  'INCOMING': 'به وارد',
-  'OUTGOING': 'به منصرف',
-  'DEBT': 'عليه مديونية',
-};
-const _paymentOptions = {
-  '': 'كل حالات السداد',
-  'PAID': 'مدفوع بالكامل',
-  'PARTIAL': 'مدفوع جزئيًا',
-  'UNPAID': 'غير مدفوع',
-  'PENDING': 'بانتظار الاعتماد',
-  'REJECTED': 'مرفوض',
-};
-
 Widget _choice(
   String label,
   String value,
@@ -460,8 +435,8 @@ Widget _choice(
 );
 
 /// One card frame for every reference list; each section adds its own data:
-/// contractors open their account, cost centres show in/out/debt, units and
-/// categories show their input mode or level.
+/// contractors and cost centres open their detail files; units and categories
+/// show their input mode or level.
 class _ReferenceCard extends StatelessWidget {
   const _ReferenceCard({
     required this.record,
@@ -485,7 +460,7 @@ class _ReferenceCard extends StatelessWidget {
       SettingsSection.contractors => (LucideIcons.hardHat, 'ملف مقاول'),
       SettingsSection.costCenters => (
         office ? LucideIcons.building2 : LucideIcons.hardHat,
-        office ? 'مركز إداري' : 'ملف مشروع',
+        office ? 'مكتب إداري' : 'مشروع',
       ),
       SettingsSection.units => (
         LucideIcons.ruler,
@@ -496,192 +471,201 @@ class _ReferenceCard extends StatelessWidget {
         record.parentId == null ? 'بند رئيسي' : 'بند فرعي',
       ),
     };
+    if (section == SettingsSection.costCenters) {
+      return _CostCenterReferenceCard(
+        record: record,
+        kind: kind,
+        canManage: canManage,
+        onEdit: onEdit,
+        onOpen: onOpen,
+      );
+    }
     final compact =
         section == SettingsSection.units ||
         section == SettingsSection.expenseCategories;
-    return Material(
-      color: Colors.white,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: tokens.line),
+    final center = section == SettingsSection.costCenters;
+    final radius = BorderRadius.circular(center ? 20 : 18);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: center
+            ? [
+                BoxShadow(
+                  color: tokens.brandDeep.withValues(alpha: .07),
+                  blurRadius: 14,
+                  offset: const Offset(0, 5),
+                ),
+              ]
+            : null,
       ),
-      child: InkWell(
-        onTap: onOpen,
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(
-            14,
-            compact ? 10 : 14,
-            6,
-            compact ? 10 : 14,
+      child: Material(
+        color: center
+            ? Color.alphaBlend(
+                tokens.brand.withValues(alpha: .025),
+                Colors.white,
+              )
+            : Colors.white,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(
+            color: center ? tokens.brand.withValues(alpha: .16) : tokens.line,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: section == SettingsSection.contractors
-                          ? tokens.brandStrong
-                          : tokens.wash,
-                      borderRadius: BorderRadius.circular(13),
+        ),
+        child: InkWell(
+          onTap: onOpen,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              center ? 16 : 14,
+              compact
+                  ? 10
+                  : center
+                  ? 16
+                  : 14,
+              center ? 10 : 6,
+              compact
+                  ? 10
+                  : center
+                  ? 16
+                  : 14,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: center ? 44 : 40,
+                      height: center ? 44 : 40,
+                      decoration: BoxDecoration(
+                        color: section == SettingsSection.contractors
+                            ? tokens.brandStrong
+                            : tokens.wash,
+                        borderRadius: BorderRadius.circular(center ? 15 : 13),
+                        border: center
+                            ? Border.all(
+                                color: tokens.brand.withValues(alpha: .12),
+                              )
+                            : null,
+                      ),
+                      child: Icon(
+                        icon,
+                        size: center ? 20 : 19,
+                        color: section == SettingsSection.contractors
+                            ? Colors.white
+                            : tokens.brandStrong,
+                      ),
                     ),
-                    child: Icon(
-                      icon,
-                      size: 19,
-                      color: section == SettingsSection.contractors
-                          ? Colors.white
-                          : tokens.brandStrong,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          record.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Text(
-                              record.code,
-                              textDirection: TextDirection.ltr,
-                              style: TextStyle(
-                                color: tokens.brandStrong,
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w800,
-                              ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            record.name,
+                            maxLines: center ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: center ? 15.5 : 15,
+                              height: 1.25,
+                              fontWeight: FontWeight.w900,
                             ),
-                            Text(' · ', style: TextStyle(color: tokens.muted)),
-                            Flexible(
-                              child: Text(
-                                kind,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            children: [
+                              Text(
+                                record.code,
+                                textDirection: TextDirection.ltr,
                                 style: TextStyle(
-                                  color: tokens.muted,
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w600,
+                                  color: tokens.brandStrong,
+                                  fontSize: center ? 12 : 11.5,
+                                  fontWeight: FontWeight.w900,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  record.active
-                      ? const AppTag('نشط', tone: AppTone.success)
-                      : const AppTag('غير نشط', tone: AppTone.danger),
-                  if (canManage)
-                    IconButton(
-                      tooltip: 'تعديل',
-                      visualDensity: VisualDensity.compact,
-                      onPressed: onEdit,
-                      icon: const Icon(LucideIcons.pencil, size: 17),
-                    )
-                  else
-                    const SizedBox(width: 8),
-                ],
-              ),
-              if (section == SettingsSection.contractors) ...[
-                Divider(height: 22, color: tokens.line),
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'آخر تحديث ${_date(record.updatedAt)}',
-                          style: TextStyle(
-                            color: tokens.muted,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      FilledButton.icon(
-                        onPressed: onOpen,
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(0, 36),
-                          backgroundColor: tokens.brandStrong,
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                        ),
-                        icon: const Icon(LucideIcons.arrowLeft, size: 15),
-                        label: const Text('عرض الحساب'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-              if (section == SettingsSection.costCenters) ...[
-                const SizedBox(height: 10),
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 8),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      AppTag(office ? 'مكتب' : 'مشروع'),
-                      AppTag(
-                        '${record.extractCount ?? 0} مستخلص',
-                        icon: LucideIcons.fileSpreadsheet,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Padding(
-                  padding: const EdgeInsetsDirectional.only(end: 8),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: tokens.sunken,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: tokens.line),
-                    ),
-                    child: IntrinsicHeight(
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _CenterMetric(
-                              label: 'وارد',
-                              value: _money(record.incoming),
-                              color: AppTokens.success,
-                            ),
-                          ),
-                          VerticalDivider(width: 1, color: tokens.line),
-                          Expanded(
-                            child: _CenterMetric(
-                              label: 'منصرف',
-                              value: _money(record.outgoing),
-                              color: AppTokens.danger,
-                            ),
-                          ),
-                          VerticalDivider(width: 1, color: tokens.line),
-                          Expanded(
-                            child: _CenterMetric(
-                              label: 'مديون',
-                              value: _money(record.debt),
-                              color: AppTokens.warning,
-                            ),
+                              Text(
+                                ' · ',
+                                style: TextStyle(color: tokens.muted),
+                              ),
+                              Flexible(
+                                child: Text(
+                                  center
+                                      ? '$kind · ${record.active ? 'نشط' : 'غير نشط'}'
+                                      : kind,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: tokens.muted,
+                                    fontSize: center ? 12 : 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                  ),
+                    if (!center)
+                      record.active
+                          ? const AppTag('نشط', tone: AppTone.success)
+                          : const AppTag('غير نشط', tone: AppTone.danger),
+                    if (canManage)
+                      AppEditButton(tooltip: 'تعديل', onPressed: onEdit)
+                    else if (!center)
+                      const SizedBox(width: 8),
+                    if (center && onOpen != null)
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(end: 5),
+                        child: Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: tokens.line),
+                          ),
+                          child: Icon(
+                            LucideIcons.chevronLeft,
+                            size: 17,
+                            color: tokens.brand,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
+                if (section == SettingsSection.contractors) ...[
+                  Divider(height: 22, color: tokens.line),
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(end: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'آخر تحديث ${_date(record.updatedAt)}',
+                            style: TextStyle(
+                              color: tokens.muted,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        FilledButton.icon(
+                          onPressed: onOpen,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(0, 36),
+                            backgroundColor: tokens.brandStrong,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                          ),
+                          icon: const Icon(LucideIcons.arrowLeft, size: 15),
+                          label: const Text('عرض الحساب'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -689,43 +673,192 @@ class _ReferenceCard extends StatelessWidget {
   }
 }
 
-class _CenterMetric extends StatelessWidget {
-  const _CenterMetric({
-    required this.label,
-    required this.value,
-    required this.color,
+class _CostCenterReferenceCard extends StatelessWidget {
+  const _CostCenterReferenceCard({
+    required this.record,
+    required this.kind,
+    required this.canManage,
+    required this.onEdit,
+    required this.onOpen,
   });
-  final String label;
-  final String value;
-  final Color color;
+
+  final ReferenceRecord record;
+  final String kind;
+  final bool canManage;
+  final VoidCallback onEdit;
+  final VoidCallback? onOpen;
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
-    child: Column(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            color: context.tokens.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final tokens = context.tokens;
+    final office = record.type == 'OFFICE';
+    final radius = BorderRadius.circular(18);
+    final accent = office ? AppTokens.warning : tokens.brandStrong;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: tokens.brandDeep.withValues(alpha: .07),
+            blurRadius: 16,
+            offset: const Offset(0, 7),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.white,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: radius,
+          side: BorderSide(color: tokens.brand.withValues(alpha: .16)),
+        ),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: AlignmentDirectional.topStart,
+              end: AlignmentDirectional.bottomEnd,
+              colors: [tokens.wash.withValues(alpha: .7), Colors.white],
+            ),
+          ),
+          child: InkWell(
+            onTap: onOpen,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  height: 5,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        accent,
+                        accent.withValues(alpha: .58),
+                        accent.withValues(alpha: .2),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 20,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              color: accent.withValues(alpha: .75),
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              office ? 'مركز إداري' : 'ملف مشروع',
+                              style: TextStyle(
+                                color: accent,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          record.active
+                              ? const AppTag('نشط', tone: AppTone.success)
+                              : const AppTag('غير نشط', tone: AppTone.danger),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        record.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: tokens.brandDeep,
+                          fontSize: 18,
+                          height: 1.3,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 7,
+                        children: [
+                          _CostCenterMetaPill(
+                            label: record.code,
+                            ltr: true,
+                            strong: true,
+                          ),
+                          _CostCenterMetaPill(label: kind),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Divider(height: 1, color: tokens.line),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          if (canManage)
+                            AppEditButton(tooltip: 'تعديل', onPressed: onEdit),
+                          const Spacer(),
+                          if (onOpen != null)
+                            FilledButton.icon(
+                              onPressed: onOpen,
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(0, 39),
+                                backgroundColor: tokens.brandStrong,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              icon: const Icon(LucideIcons.arrowLeft, size: 16),
+                              label: const Text('عرض التفاصيل'),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textDirection: TextDirection.ltr,
-          style: TextStyle(
-            color: color,
-            fontSize: 14.5,
-            fontWeight: FontWeight.w800,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ],
+      ),
+    );
+  }
+}
+
+class _CostCenterMetaPill extends StatelessWidget {
+  const _CostCenterMetaPill({
+    required this.label,
+    this.ltr = false,
+    this.strong = false,
+  });
+
+  final String label;
+  final bool ltr;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(7),
+      border: Border.all(color: context.tokens.line),
+    ),
+    child: Text(
+      label,
+      textDirection: ltr ? TextDirection.ltr : null,
+      style: TextStyle(
+        color: strong ? context.tokens.brandStrong : context.tokens.muted,
+        fontSize: 12,
+        fontWeight: strong ? FontWeight.w900 : FontWeight.w700,
+      ),
     ),
   );
 }
@@ -949,6 +1082,3 @@ class _FieldLabel extends StatelessWidget {
 }
 
 String _date(String value) => value.length >= 10 ? value.substring(0, 10) : '—';
-
-String _money(String? value) =>
-    (ExactDecimal.tryParse(value ?? '') ?? ExactDecimal.zero).money();

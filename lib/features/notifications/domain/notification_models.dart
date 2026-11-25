@@ -65,18 +65,6 @@ class AppNotification {
     'CONTRACTOR_EXTRACT_REQUESTED' => 'مستخلص بانتظار الاعتماد',
     'CONTRACTOR_EXTRACT_APPROVED' => 'تم اعتماد المستخلص',
     'CONTRACTOR_EXTRACT_REJECTED' => 'تم رفض المستخلص',
-    'HR_REQUEST_SUBMITTED' => 'طلب موظف بانتظار القرار',
-    'HR_REQUEST_APPROVED' => 'تم قبول الطلب',
-    'HR_REQUEST_REJECTED' => 'تم رفض الطلب',
-    'HR_REQUEST_CANCELLED' => 'تم إلغاء الطلب',
-    'HR_OVERTIME_PENDING' => 'وقت إضافي بانتظار الموافقة',
-    'HR_DEVICE_PENDING' => 'طلب ربط جهاز بانتظار الموافقة',
-    'HR_DEVICE_APPROVED' => 'تم ربط الجهاز',
-    'HR_DEVICE_REJECTED' => 'تم رفض ربط الجهاز',
-    'HR_DEVICE_REMOVED' => 'تم ربط جهازك بحساب آخر',
-    'HR_PUNCH_PENDING' => 'بصمة بانتظار الموافقة',
-    'HR_PUNCH_APPROVED' => 'تم اعتماد البصمة',
-    'HR_PUNCH_REJECTED' => 'تم رفض البصمة',
     _ => 'بند مصروف جديد',
   };
 }
@@ -98,6 +86,8 @@ class NotificationInbox {
               (item) =>
                   AppNotification.fromJson(Map<String, dynamic>.from(item)),
             )
+            // HR is not part of this app: its notifications stay on the web.
+            .where((item) => !item.kind.startsWith('HR_'))
             .toList(growable: false),
         total: (json['total'] as num?)?.toInt() ?? 0,
         unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,

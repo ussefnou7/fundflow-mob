@@ -11,6 +11,9 @@ import 'package:fundflow_mob/features/auth/domain/auth_gateway.dart';
 import 'package:fundflow_mob/features/auth/domain/auth_user.dart';
 import 'package:fundflow_mob/features/custody/data/custody_repository.dart';
 import 'package:fundflow_mob/features/custody/domain/custody_models.dart';
+import 'package:fundflow_mob/features/crm/data/crm_repository.dart';
+import 'package:fundflow_mob/features/dashboard/data/dashboard_repository.dart';
+import 'package:fundflow_mob/features/dashboard/domain/dashboard_models.dart';
 import 'package:fundflow_mob/features/settings/data/settings_repository.dart';
 import 'package:fundflow_mob/features/treasury/data/treasury_repository.dart';
 import 'package:fundflow_mob/features/workspace/application/workspace_controller.dart';
@@ -33,6 +36,8 @@ void main() {
       custody: _FakeCustodyRepository(),
       settings: _FakeSettingsRepository(),
       treasury: _FakeTreasuryRepository(),
+      dashboard: _FakeDashboardRepository(),
+      crm: _FakeCrmRepository(),
       context: const WorkspaceContext(
         theme: FundFlowBrand.evergreen,
         companyName: 'شركة العاصمة',
@@ -48,6 +53,7 @@ void main() {
           'SETTINGS_VIEW',
           'SETTINGS_MANAGE',
           'TREASURY_VIEW',
+          'CRM_INSPECTION_DASHBOARD',
         },
         memberships: [
           WorkspaceMembership(
@@ -77,6 +83,7 @@ void main() {
     expect(find.byType(AppBar), findsNothing);
     expect(find.byTooltip('فتح القائمة'), findsOneWidget);
     expect(find.byTooltip('الإشعارات'), findsOneWidget);
+    expect(find.byKey(const ValueKey('company-header-icon')), findsOneWidget);
     final companyHeader = find.textContaining(
       'شركة العاصمة',
       findRichText: true,
@@ -89,11 +96,22 @@ void main() {
     tester.state<ScaffoldState>(find.byType(Scaffold).first).openDrawer();
     await tester.pumpAndSettle();
 
-    expect(find.text('Monetizer'), findsOneWidget);
+    final appLogo = find.byKey(const ValueKey('sidebar-app-logo'));
+    expect(appLogo, findsOneWidget);
+    // Asset images decode off the test clock; wait so the wordmark is drawn.
+    await tester.runAsync(() async {
+      final image = tester.widget<Image>(appLogo).image;
+      await precacheImage(image, tester.element(appLogo));
+    });
+    await tester.pumpAndSettle();
+    // Groups start collapsed; open the custody group to see its pages.
+    await tester.tap(find.text('إدارة العهد'));
+    await tester.pumpAndSettle();
     expect(find.text('مجمع العهد'), findsOneWidget);
     expect(find.text('الإعدادات'), findsOneWidget);
     expect(find.text('العهد'), findsOneWidget);
     expect(find.text('المالية'), findsOneWidget);
+    expect(find.text('العملاء'), findsOneWidget);
     expect(find.text('العهدة'), findsOneWidget);
     expect(find.text('وحدات القياس'), findsNothing);
     expect(find.text('الخزن'), findsNothing);
@@ -115,6 +133,15 @@ void main() {
     expect(find.text('وحدات القياس'), findsNothing);
     expect(find.text('العهدة'), findsNothing);
 
+    await tester.tap(find.text('العملاء'));
+    await tester.pumpAndSettle();
+    expect(find.text('لوحة المعاينات'), findsOneWidget);
+    expect(find.text('الخزن'), findsNothing);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/workspace_crm_menu_390x844.png'),
+    );
+
     Navigator.of(tester.element(find.byType(Drawer))).pop();
     await tester.pumpAndSettle();
     await tester.tap(companyHeader);
@@ -125,6 +152,24 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/company_dropdown_390x844.png'),
     );
+
+    // Close the company picker, open another top-level destination, then
+    // exercise the platform back dispatch used by Android's back button.
+    await tester.tapAt(const Offset(8, 800));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('فتح القائمة'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إدارة العهد'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('العهدة'));
+    await tester.pumpAndSettle();
+    expect(find.text('لوحة المتابعة'), findsNothing);
+    expect(find.byTooltip('رجوع'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('لوحة المتابعة'), findsOneWidget);
+    expect(find.byTooltip('رجوع'), findsNothing);
   });
 }
 
@@ -188,4 +233,22 @@ class _FakeSettingsRepository extends SettingsRepository {
 class _FakeTreasuryRepository extends TreasuryRepository {
   _FakeTreasuryRepository()
     : super(ApiClient(dio: Dio(), cookieJar: CookieJar()));
+}
+
+class _FakeDashboardRepository extends DashboardRepository {
+  _FakeDashboardRepository()
+    : super(ApiClient(dio: Dio(), cookieJar: CookieJar()));
+
+  @override
+  Future<FollowUpBoard> load() async => FollowUpBoard.fromJson({
+    'today': '2026-11-25',
+    'inbox': [
+      {'kind': 'APPROVALS', 'count': 3},
+    ],
+    'alerts': <Object>[],
+  });
+}
+
+class _FakeCrmRepository extends CrmRepository {
+  _FakeCrmRepository() : super(ApiClient(dio: Dio(), cookieJar: CookieJar()));
 }

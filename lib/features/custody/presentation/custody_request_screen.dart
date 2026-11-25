@@ -1,7 +1,9 @@
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/app_buttons.dart';
 import '../../../core/widgets/app_date_picker.dart';
 import '../../../core/widgets/app_filter.dart';
 import '../../../core/widgets/app_pagination.dart';
@@ -50,6 +52,21 @@ class _CustodyRequestScreenState extends State<CustodyRequestScreen> {
   bool get _canFund =>
       widget.treasury != null &&
       widget.permissions.contains('TREASURY_OPERATE');
+  bool get _canCreate => widget.permissions.contains('CUSTODY_REQUEST_CREATE');
+
+  /// A new request goes to the manager; the list shows it at once.
+  Future<void> _create() async {
+    final sent = await showRequestForm(
+      context: context,
+      repository: widget.repository,
+    );
+    if (!mounted || !sent) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('تم إرسال طلب العهدة إلى المدير')),
+    );
+    setState(() => _pageIndex = 0);
+    await _load();
+  }
 
   @override
   void initState() {
@@ -158,7 +175,16 @@ class _CustodyRequestScreenState extends State<CustodyRequestScreen> {
     return AppRefreshPage(
       onRefresh: _load,
       children: [
-        const PageHeader(title: 'طلبات العهدة'),
+        PageHeader(
+          title: 'طلبات العهدة',
+          // Without CUSTODY_REQUEST_VIEW the server lists the user's own only.
+          subtitle: widget.permissions.contains('CUSTODY_REQUEST_VIEW')
+              ? null
+              : 'طلباتك فقط',
+          action: _canCreate
+              ? AppAddButton(label: 'طلب عهدة', onPressed: _create)
+              : null,
+        ),
         const SizedBox(height: 14),
         AppFilterBar(
           activeCount: _unpaidOnly ? 1 : 0,
@@ -568,7 +594,7 @@ class _FundSheetState extends State<_FundSheet> {
   List<TreasuryAccount> _treasuries = const [];
   String? _treasuryId;
   String _method = 'CASH';
-  String _date = formatIsoDate(DateTime.now());
+  String _date = formatIsoDate(clock.now());
   bool _loading = true;
   bool _busy = false;
   String? _error;
@@ -717,9 +743,9 @@ class _FundSheetState extends State<_FundSheet> {
                   : () async {
                       final picked = await showAppDatePicker(
                         context: context,
-                        initialDate: DateTime.tryParse(_date) ?? DateTime.now(),
+                        initialDate: DateTime.tryParse(_date) ?? clock.now(),
                         firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
+                        lastDate: clock.now(),
                       );
                       if (picked != null) {
                         setState(() => _date = formatIsoDate(picked));

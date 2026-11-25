@@ -51,18 +51,17 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyCoEcAVhU39dkxGuoU4Fn5f4Pi5DcoS7lg',
-    appId: '1:564786798970:android:a30018fdff9fcded10f6c3',
+    appId: '1:564786798970:android:b44d2ccfe982c89010f6c3',
     messagingSenderId: '564786798970',
     projectId: 'fundflow-fa06e',
     storageBucket: 'fundflow-fa06e.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyAnZOgaw9ROYOU_GDTx72YBPxxrlIv-zPw',
-    appId: '1:564786798970:ios:487d3aeb56ac4f6d10f6c3',
+    appId: '1:564786798970:ios:f8003c15e6f8ea0210f6c3',
     messagingSenderId: '564786798970',
     projectId: 'fundflow-fa06e',
     storageBucket: 'fundflow-fa06e.firebasestorage.app',
-    iosBundleId: 'org.smart.fundflow.mobile',
+    iosBundleId: 'com.monetizer.app',
   );
 }

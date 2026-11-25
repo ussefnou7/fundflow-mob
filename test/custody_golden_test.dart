@@ -1,3 +1,4 @@
+import 'package:clock/clock.dart';
 import 'package:cookie_jar/cookie_jar.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +14,6 @@ import 'package:fundflow_mob/features/custody/domain/custody_models.dart';
 import 'package:fundflow_mob/features/custody/presentation/custody_screen.dart';
 import 'package:fundflow_mob/features/custody/presentation/custody_request_screen.dart';
 import 'package:fundflow_mob/features/custody/presentation/aggregate_custody_screen.dart';
-import 'package:fundflow_mob/features/custody/presentation/dashboard_screen.dart';
 import 'package:fundflow_mob/features/treasury/data/treasury_repository.dart';
 import 'package:fundflow_mob/features/treasury/domain/treasury_models.dart';
 
@@ -84,41 +84,6 @@ void main() {
     final padding = list.padding!.resolve(TextDirection.rtl);
     expect(padding.bottom, 196);
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('dashboard mobile visual', (tester) async {
-    _setPhone(tester);
-    final repository = _FakeCustodyRepository();
-    await tester.pumpWidget(
-      MaterialApp(
-        debugShowCheckedModeBanner: false,
-        locale: const Locale('ar'),
-        builder: _rtlBuilder,
-        theme: AppTheme.light(),
-        home: Scaffold(
-          body: DashboardScreen(
-            repository: repository,
-            onOpenAggregate: () {},
-            onOpenCustody: (_) {},
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.byTooltip('تحديث'), findsNothing);
-    expect(find.byType(RefreshIndicator), findsOneWidget);
-    expect(
-      tester.widget<ListView>(find.byType(ListView)).physics,
-      isA<AlwaysScrollableScrollPhysics>(),
-    );
-    expect(repository.dashboardCalls, 1);
-    await tester.drag(find.byType(ListView), const Offset(0, 300));
-    await tester.pumpAndSettle();
-    expect(repository.dashboardCalls, 2);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/dashboard_390x844.png'),
-    );
   });
 
   testWidgets('custody screen shows balance, actions and the ledger table', (
@@ -287,38 +252,41 @@ void main() {
   });
 
   testWidgets('managers review and fund requests from cards', (tester) async {
-    _setPhone(tester);
-    await tester.pumpWidget(
-      _app(
-        CustodyRequestScreen(
-          repository: _FakeCustodyRepository(),
-          treasury: _FakeTreasuryRepository(),
-          permissions: const {
-            'CUSTODY_REQUEST_VIEW',
-            'CUSTODY_REQUEST_APPROVE',
-            'TREASURY_OPERATE',
-          },
+    // The fund sheet opens on today's date; pin it so the golden holds.
+    await withClock(Clock.fixed(DateTime(2026, 10, 31, 10)), () async {
+      _setPhone(tester);
+      await tester.pumpWidget(
+        _app(
+          CustodyRequestScreen(
+            repository: _FakeCustodyRepository(),
+            treasury: _FakeTreasuryRepository(),
+            permissions: const {
+              'CUSTODY_REQUEST_VIEW',
+              'CUSTODY_REQUEST_APPROVE',
+              'TREASURY_OPERATE',
+            },
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('طلبات العهدة'), findsOneWidget);
-    expect(find.text('موافقة'), findsOneWidget);
-    expect(find.text('صرف من الخزنة'), findsOneWidget);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/custody_request_390x844.png'),
-    );
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('طلبات العهدة'), findsOneWidget);
+      expect(find.text('موافقة'), findsOneWidget);
+      expect(find.text('صرف من الخزنة'), findsOneWidget);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/custody_request_390x844.png'),
+      );
 
-    await tester.tap(find.text('صرف من الخزنة'));
-    await tester.pumpAndSettle();
-    expect(find.text('صرف طلب العهدة'), findsOneWidget);
-    expect(find.text('الخزينة الرئيسية'), findsOneWidget);
-    expect(find.text('تسجيل الصرف'), findsOneWidget);
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/custody_fund_390x844.png'),
-    );
+      await tester.tap(find.text('صرف من الخزنة'));
+      await tester.pumpAndSettle();
+      expect(find.text('صرف طلب العهدة'), findsOneWidget);
+      expect(find.text('الخزينة الرئيسية'), findsOneWidget);
+      expect(find.text('تسجيل الصرف'), findsOneWidget);
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/custody_fund_390x844.png'),
+      );
+    });
   });
 
   testWidgets('employees request custody from the custody screen', (

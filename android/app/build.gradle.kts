@@ -31,7 +31,7 @@ gradle.taskGraph.whenReady {
 }
 
 android {
-    namespace = "org.smart.fundflow.mobile"
+    namespace = "com.monetizer.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -45,7 +45,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "org.smart.fundflow.mobile"
+        applicationId = "com.monetizer.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

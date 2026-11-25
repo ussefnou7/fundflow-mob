@@ -48,6 +48,9 @@ class ApiClient {
       path == '/custody/transfers' ||
       path == '/custody/requests' ||
       path == '/contractor-extracts' ||
+      path == '/scm/purchase-requests' ||
+      path == '/scm/purchase-orders' ||
+      path == '/scm/cash-purchases' ||
       RegExp(
         r'^/treasuries/[^/]+/(movements|direct-expenses|returns)$',
       ).hasMatch(path);
@@ -236,8 +239,7 @@ class ApiClient {
     );
   }
 
-  /// A JSON part beside one file per named part, as a face punch sends its
-  /// front and action photos.
+  /// A JSON part beside one file per named part.
   Future<Response<dynamic>> postMultipartParts(
     String path, {
     required String jsonPartName,

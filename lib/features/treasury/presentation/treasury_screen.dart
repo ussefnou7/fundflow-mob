@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../../core/widgets/app_buttons.dart';
 import '../../../core/media/invoice_picker.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/app_date_picker.dart';
@@ -472,11 +473,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: _newMovement,
-                  icon: const Icon(LucideIcons.plus, size: 17),
-                  label: const Text('حركة جديدة'),
-                ),
+                AppAddButton(label: 'حركة جديدة', onPressed: _newMovement),
               ],
             ),
             AnimatedCrossFade(
@@ -515,11 +512,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           if (_tab == _TreasuryTab.loans && canStartIntercompany) ...[
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: FilledButton.icon(
+              child: AppAddButton(
+                label: 'سلفة جديدة',
                 onPressed: () =>
                     _openIntercompanyTransfer(purpose: 'LOAN_DISBURSEMENT'),
-                icon: const Icon(LucideIcons.plus, size: 18),
-                label: const Text('سلفة جديدة'),
               ),
             ),
             const SizedBox(height: 10),
@@ -527,11 +523,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           if (_tab == _TreasuryTab.contributions && canStartIntercompany) ...[
             Align(
               alignment: AlignmentDirectional.centerStart,
-              child: FilledButton.icon(
+              child: AppAddButton(
+                label: 'مساهمة جديدة',
                 onPressed: () =>
                     _openIntercompanyTransfer(purpose: 'CONTRIBUTION'),
-                icon: const Icon(LucideIcons.plus, size: 18),
-                label: const Text('مساهمة جديدة'),
               ),
             ),
             const SizedBox(height: 10),
@@ -654,7 +649,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           const AppTableColumn('التاريخ', 96),
           const AppTableColumn('المرجع', 120),
           const AppTableColumn('البيان', 210),
-          if (_canApprove) const AppTableColumn('إجراء', 96),
+          if (_canApprove) const AppTableColumn('إجراء', 132),
         ],
         rows: _ledger?.items ?? const [],
         loading: _loading,
@@ -688,10 +683,16 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     _reversibleOperationKinds.contains(entry.type)
                 ? OutlinedButton.icon(
                     onPressed: () => _reverseOperation(entry),
-                    icon: const Icon(LucideIcons.undo2, size: 15),
-                    label: const Text('عكس'),
+                    icon: const Icon(LucideIcons.undo2, size: 17),
+                    label: const Text('عكس', maxLines: 1, softWrap: false),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTokens.danger,
+                      minimumSize: const Size(88, 44),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -762,9 +763,9 @@ class _QuickActions extends StatelessWidget {
       itemCount: actions.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        mainAxisSpacing: 6,
-        crossAxisSpacing: 6,
-        childAspectRatio: 2.45,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 2.08,
       ),
       itemBuilder: (context, index) {
         final action = actions[index];
@@ -778,20 +779,20 @@ class _QuickActions extends StatelessWidget {
             onTap: () => onSelected(action.$1),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Row(
                 children: [
                   Container(
-                    width: 30,
-                    height: 30,
+                    width: 40,
+                    height: 40,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(9),
+                      borderRadius: BorderRadius.circular(11),
                       border: Border.all(color: tokens.line),
                     ),
-                    child: Icon(action.$4, size: 15, color: tokens.brand),
+                    child: Icon(action.$4, size: 20, color: tokens.brand),
                   ),
-                  const SizedBox(width: 7),
+                  const SizedBox(width: 9),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -803,15 +804,21 @@ class _QuickActions extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             color: tokens.ink,
-                            fontSize: 10.5,
+                            fontSize: 12.5,
+                            height: 1.35,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
+                        const SizedBox(height: 2),
                         Text(
                           action.$3,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: tokens.muted, fontSize: 8.5),
+                          style: TextStyle(
+                            color: tokens.muted,
+                            fontSize: 10.5,
+                            height: 1.3,
+                          ),
                         ),
                       ],
                     ),

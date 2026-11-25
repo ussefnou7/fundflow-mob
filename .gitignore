@@ -47,3 +47,9 @@ app.*.map.json
 android/key.properties
 *.jks
 *.keystore
+
+# Golden-test failure output and local release builds
+test/failures/
+/*.apk
+/*.aab
+/*.ipa

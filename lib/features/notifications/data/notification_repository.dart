@@ -7,9 +7,18 @@ class NotificationRepository {
 
   final ApiClient _client;
 
+  /// HR is not part of this app: the server leaves its notifications out of
+  /// the list, the count and "read all", so they stay on the web.
+  static const hiddenKindPrefix = 'HR_';
+
   Future<NotificationInbox> inbox({int page = 0, int size = 20}) async =>
       NotificationInbox.fromJson(
-        requireMap(await _client.get('/notifications?page=$page&size=$size')),
+        requireMap(
+          await _client.get(
+            '/notifications?page=$page&size=$size'
+            '&hiddenKindPrefix=$hiddenKindPrefix',
+          ),
+        ),
       );
 
   Future<void> read(String id) async {
@@ -22,7 +31,7 @@ class NotificationRepository {
 
   Future<void> readAll() async {
     final response = await _client.postJson(
-      '/notifications/read-all',
+      '/notifications/read-all?hiddenKindPrefix=$hiddenKindPrefix',
       const {},
     );
     if (response.statusCode != 204) throw ApiError.fromResponse(response);

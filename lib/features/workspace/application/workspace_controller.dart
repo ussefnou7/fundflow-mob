@@ -1,13 +1,17 @@
 import 'package:flutter/foundation.dart';
 
 import '../../custody/data/custody_repository.dart';
+import '../../dashboard/data/dashboard_repository.dart';
+import '../../crm/data/crm_repository.dart';
 import '../../extracts/data/extract_repository.dart';
-import '../../hr/application/punch_sensors.dart';
-import '../../hr/data/hr_repository.dart';
-import '../../hr/domain/hr_models.dart';
 import '../../notifications/data/notification_repository.dart';
+import '../../meetings/data/meetings_repository.dart';
 import '../../settings/data/settings_repository.dart';
+import '../../scm/data/scm_repository.dart';
 import '../../treasury/data/treasury_repository.dart';
+import '../../users/data/users_repository.dart';
+import '../../workflow/data/workflow_repository.dart';
+import '../../workflow/domain/workflow_models.dart';
 import '../data/workspace_repository.dart';
 import '../domain/workspace_context.dart';
 
@@ -19,8 +23,12 @@ class WorkspaceController extends ChangeNotifier {
     this.extracts,
     this.notifications,
     this.treasury,
-    this.hr,
-    this.punchSensors,
+    this.scm,
+    this.crm,
+    this.meetings,
+    this.workflow,
+    this.users,
+    this.dashboard,
   });
 
   WorkspaceController.seeded({
@@ -30,8 +38,12 @@ class WorkspaceController extends ChangeNotifier {
     this.extracts,
     this.notifications,
     this.treasury,
-    this.hr,
-    this.punchSensors,
+    this.scm,
+    this.crm,
+    this.meetings,
+    this.workflow,
+    this.users,
+    this.dashboard,
   }) : repository = null;
 
   final WorkspaceRepository? repository;
@@ -40,13 +52,14 @@ class WorkspaceController extends ChangeNotifier {
   final ExtractRepository? extracts;
   final NotificationRepository? notifications;
   final TreasuryRepository? treasury;
+  final ScmRepository? scm;
+  final CrmRepository? crm;
+  final MeetingsRepository? meetings;
+  final WorkflowRepository? workflow;
+  final UsersRepository? users;
+  final DashboardRepository? dashboard;
 
-  /// The employee's own HR self-service; null in builds without HR.
-  final HrRepository? hr;
-  final PunchSensors? punchSensors;
-
-  /// Whether this user decides on phones or punches here, and how many wait.
-  HrApprovalSummary approvals = const HrApprovalSummary();
+  WorkflowInboxCount workflowApprovals = const WorkflowInboxCount();
   WorkspaceContext? context;
   int _generation = 0;
   bool loading = false;
@@ -67,7 +80,7 @@ class WorkspaceController extends ChangeNotifier {
       if (generation != _generation) return;
       context = loaded;
       tenantLogo = logo;
-      approvals = await _approvals();
+      workflowApprovals = await _workflowApprovals();
     } catch (exception) {
       if (generation != _generation) return;
       error = exception.toString().replaceFirst('ApiError: ', '');
@@ -91,7 +104,7 @@ class WorkspaceController extends ChangeNotifier {
       final loaded = await source.selectCompany(companyId);
       if (generation != _generation) return false;
       context = loaded;
-      approvals = await _approvals();
+      workflowApprovals = await _workflowApprovals();
       return true;
     } catch (exception) {
       if (generation != _generation) return false;
@@ -107,22 +120,26 @@ class WorkspaceController extends ChangeNotifier {
 
   /// After a decision or a notification: the drawer's count follows.
   Future<void> refreshApprovals() async {
-    approvals = await _approvals();
+    workflowApprovals = await _workflowApprovals();
     notifyListeners();
   }
 
-  /// Nothing to approve when it cannot tell: the screen just stays hidden.
-  Future<HrApprovalSummary> _approvals() async {
+  void setWorkflowApprovals(WorkflowInboxCount value) {
+    workflowApprovals = value;
+    notifyListeners();
+  }
+
+  Future<WorkflowInboxCount> _workflowApprovals() async {
     try {
-      return await hr?.approvalSummary() ?? const HrApprovalSummary();
+      return await workflow?.count() ?? const WorkflowInboxCount();
     } catch (_) {
-      return const HrApprovalSummary();
+      return const WorkflowInboxCount();
     }
   }
 
   void reset() {
     _generation++;
-    approvals = const HrApprovalSummary();
+    workflowApprovals = const WorkflowInboxCount();
     loading = false;
     context = null;
     tenantLogo = null;

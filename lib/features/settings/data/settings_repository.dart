@@ -15,8 +15,6 @@ class SettingsRepository {
     bool? active,
     String? type,
     bool subCategoriesOnly = false,
-    String? financial,
-    String? payment,
     int page = 0,
     int size = 10,
   }) async {
@@ -27,12 +25,8 @@ class SettingsRepository {
       if (active != null) 'active': '$active',
       if (type != null && type.isNotEmpty) 'type': type,
       if (subCategoriesOnly) 'subsOnly': 'true',
-      if (financial != null && financial.isNotEmpty) 'financial': financial,
-      if (payment != null && payment.isNotEmpty) 'payment': payment,
     };
-    final endpoint = section == SettingsSection.costCenters
-        ? '/settings/cost-centers/financials'
-        : '/settings/${section.slug}';
+    final endpoint = '/settings/${section.slug}';
     return ReferencePage.fromJson(
       requireMap(
         await _client.get(
@@ -91,6 +85,15 @@ class SettingsRepository {
       CostCenterFinancialDetail.fromJson(
         requireMap(await _client.get('/settings/cost-centers/$id/financials')),
       );
+
+  /// The centre's client contract, or null when it has none yet.
+  Future<ClientContract?> clientContract(String centerId) async {
+    final response = await _client.get(
+      '/settings/cost-centers/$centerId/contract',
+    );
+    if (response.statusCode == 404) return null;
+    return ClientContract.fromJson(requireMap(response));
+  }
 
   Future<ContractorFinancialDetail> contractorFinancialDetail(
     String id,

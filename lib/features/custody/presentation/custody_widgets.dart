@@ -405,7 +405,8 @@ class QuickActionTile extends StatelessWidget {
 }
 
 /// Segmented tabs over a screen's tables, each with an optional count of
-/// items waiting on the user.
+/// items waiting on the user. Up to four share the width; more scroll
+/// sideways so no label is ever cut.
 class LedgerTabs<T> extends StatelessWidget {
   const LedgerTabs({
     super.key,
@@ -421,6 +422,65 @@ class LedgerTabs<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.tokens;
+    final scrolls = tabs.length > 4;
+    Widget tabFor(T tab, String label, int count) => Material(
+      color: tab == value ? Colors.white : Colors.transparent,
+      elevation: tab == value ? 1 : 0,
+      shadowColor: tokens.brandStrong.withValues(alpha: .2),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: () => onChanged(tab),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 40,
+          padding: scrolls
+              ? const EdgeInsets.symmetric(horizontal: 14)
+              : EdgeInsets.zero,
+          child: Row(
+            mainAxisSize: scrolls ? MainAxisSize.min : MainAxisSize.max,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: scrolls
+                      ? TextOverflow.visible
+                      : TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: tab == value ? tokens.ink : tokens.muted,
+                  ),
+                ),
+              ),
+              if (count > 0) ...[
+                const SizedBox(width: 6),
+                Container(
+                  constraints: const BoxConstraints(minWidth: 18),
+                  height: 18,
+                  padding: const EdgeInsets.symmetric(horizontal: 5),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: tokens.brand,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.1,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -430,67 +490,30 @@ class LedgerTabs<T> extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(15),
       ),
-      child: Row(
-        children: [
-          for (final (tab, label, count) in tabs)
-            // Long labels get more room, so four tabs fit without truncating.
-            Expanded(
-              flex: (label.length < 6 ? 6 : label.length) + (count > 0 ? 3 : 0),
-              child: Material(
-                color: tab == value ? Colors.white : Colors.transparent,
-                elevation: tab == value ? 1 : 0,
-                shadowColor: tokens.brandStrong.withValues(alpha: .2),
-                borderRadius: BorderRadius.circular(12),
-                child: InkWell(
-                  onTap: () => onChanged(tab),
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    height: 40,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: tab == value ? tokens.ink : tokens.muted,
-                            ),
-                          ),
-                        ),
-                        if (count > 0) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            constraints: const BoxConstraints(minWidth: 18),
-                            height: 18,
-                            padding: const EdgeInsets.symmetric(horizontal: 5),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: tokens.brand,
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            child: Text(
-                              count > 99 ? '99+' : '$count',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                height: 1.1,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
+      child: scrolls
+          ? SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final (tab, label, count) in tabs) ...[
+                    tabFor(tab, label, count),
+                    const SizedBox(width: 2),
+                  ],
+                ],
               ),
+            )
+          : Row(
+              children: [
+                for (final (tab, label, count) in tabs)
+                  // Long labels get more room, so four tabs fit without truncating.
+                  Expanded(
+                    flex:
+                        (label.length < 6 ? 6 : label.length) +
+                        (count > 0 ? 3 : 0),
+                    child: tabFor(tab, label, count),
+                  ),
+              ],
             ),
-        ],
-      ),
     );
   }
 }

@@ -15,7 +15,34 @@ import 'package:fundflow_mob/features/settings/presentation/reference_settings_s
 void main() {
   setUpAll(_loadFonts);
 
-  testWidgets('shows cost-center financials and management action', (
+  test('loads cost centers from the supported list endpoint', () async {
+    Uri? requestedUri;
+    final dio = Dio(BaseOptions(baseUrl: 'http://localhost'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          requestedUri = options.uri;
+          handler.resolve(
+            Response<dynamic>(
+              requestOptions: options,
+              statusCode: 200,
+              data: const {'items': [], 'total': 0, 'page': 0, 'size': 10},
+            ),
+          );
+        },
+      ),
+    );
+    final repository = SettingsRepository(
+      ApiClient(dio: dio, cookieJar: CookieJar()),
+    );
+
+    await repository.findAll(section: SettingsSection.costCenters);
+
+    expect(requestedUri?.path, '/api/settings/cost-centers');
+    expect(requestedUri?.path, isNot(contains('/financials')));
+  });
+
+  testWidgets('shows cost-center list and opens its financial detail', (
     tester,
   ) async {
     tester.view.devicePixelRatio = 1;
@@ -34,6 +61,7 @@ void main() {
               repository: _FakeSettingsRepository(),
               section: SettingsSection.costCenters,
               canManage: true,
+              canOpenCenter: true,
             ),
           ),
         ),
@@ -44,8 +72,9 @@ void main() {
     expect(find.text('مراكز التكلفة'), findsOneWidget);
     expect(find.text('مركز جديد'), findsOneWidget);
     expect(find.text('مشروع العاصمة'), findsOneWidget);
-    expect(find.text('وارد'), findsOneWidget);
-    expect(find.text('125,000.00'), findsOneWidget);
+    expect(find.text('عرض التفاصيل'), findsOneWidget);
+    expect(find.text('وارد'), findsNothing);
+    expect(find.text('125,000.00'), findsNothing);
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byType(MaterialApp),
@@ -55,8 +84,31 @@ void main() {
     await tester.tap(find.text('مشروع العاصمة'));
     await tester.pumpAndSettle();
     expect(find.byTooltip('العودة لمراكز التكلفة'), findsOneWidget);
+    expect(find.byTooltip('تعديل مركز التكلفة'), findsOneWidget);
+    // The client statement opens first, behind its summary card.
+    expect(find.text('مستحق على العميل'), findsOneWidget);
+    expect(find.text('كشف الحركات'), findsOneWidget);
+    expect(find.text('مستخلص مقاول'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/cost_center_file_390x844.png'),
+    );
+
+    await tester.tap(find.text('مستحق للمقاولين'));
+    await tester.pumpAndSettle();
+    expect(find.text('المدفوع من الشركة'), findsOneWidget);
     expect(find.text('المقاول أحمد'), findsOneWidget);
-    expect(find.text('125,000.00'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('مستخلصات المقاولين'),
+      100,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('مستخلصات المقاولين'));
+    await tester.pumpAndSettle();
+    expect(find.text('ابحث بالمقاول أو رقم المستخلص…'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('opens contractor account with expandable extracts', (
@@ -163,8 +215,6 @@ class _FakeSettingsRepository extends SettingsRepository {
     bool? active,
     String? type,
     bool subCategoriesOnly = false,
-    String? financial,
-    String? payment,
     int page = 0,
     int size = 10,
   }) async => ReferencePage(
@@ -178,10 +228,6 @@ class _FakeSettingsRepository extends SettingsRepository {
         createdAt: '2026-01-01T10:00:00+02:00',
         updatedAt: '2026-10-26T10:00:00+02:00',
         type: 'PROJECT',
-        incoming: '125000.00',
-        outgoing: '82500.00',
-        debt: '17500.00',
-        extractCount: 4,
       ),
     ],
     total: 1,
@@ -223,6 +269,68 @@ class _FakeSettingsRepository extends SettingsRepository {
             items: [],
           ),
         ],
+        clientOwed: '42000.00',
+        client: ClientAccount(
+          charged: '67000.00',
+          credited: '25000.00',
+          balance: '42000.00',
+          months: [
+            (
+              month: '2026-10',
+              charged: '67000.00',
+              covered: '25000.00',
+              remaining: '42000.00',
+            ),
+          ],
+          movements: [
+            ClientMovement(
+              date: '2026-10-20',
+              kind: 'DEPOSIT',
+              description: 'دفعة مقدمة',
+              charge: '0',
+              credit: '25000.00',
+              balance: '-25000.00',
+            ),
+            ClientMovement(
+              date: '2026-10-26',
+              kind: 'CONTRACTOR_EXTRACT',
+              reference: '7',
+              party: 'المقاول أحمد',
+              description: 'أعمال المحارة',
+              charge: '67000.00',
+              credit: '0',
+              balance: '42000.00',
+            ),
+          ],
+        ),
+        profits: (
+          fees: '5000.00',
+          priceDifference: '3500.00',
+          savings: '0',
+          total: '8500.00',
+        ),
+        contractors: (
+          due: '17500.00',
+          paid: '0',
+          debt: '17500.00',
+          items: [
+            CenterContractorLine(
+              contractorId: 'contractor-1',
+              contractorName: 'المقاول أحمد',
+              due: '17500.00',
+              paidByCompany: '0',
+              paidByClient: '0',
+              debt: '17500.00',
+            ),
+          ],
+        ),
+        snag: (total: '0', items: [], unmarked: []),
+        administrative: (total: '1200.00', items: []),
+        actual: (
+          deposits: '25000.00',
+          spent: '30500.00',
+          difference: '-5500.00',
+        ),
       );
 }
 
@@ -247,8 +355,6 @@ class _FakeContractorSettingsRepository extends SettingsRepository {
     bool? active,
     String? type,
     bool subCategoriesOnly = false,
-    String? financial,
-    String? payment,
     int page = 0,
     int size = 10,
   }) async => ReferencePage(
@@ -323,8 +429,6 @@ class _FakeUnitsSettingsRepository extends SettingsRepository {
     bool? active,
     String? type,
     bool subCategoriesOnly = false,
-    String? financial,
-    String? payment,
     int page = 0,
     int size = 10,
   }) async =>
