@@ -37,11 +37,17 @@ class PushNotificationService extends ChangeNotifier {
   PushNotificationService({
     required NotificationRepository repository,
     FirebaseMessaging? messaging,
+    bool? isIOS,
+    Duration retryDelay = const Duration(milliseconds: 500),
   }) : _repository = repository,
-       _providedMessaging = messaging;
+       _providedMessaging = messaging,
+       _isIOS = isIOS ?? (!kIsWeb && Platform.isIOS),
+       _retryDelay = retryDelay;
 
   final NotificationRepository _repository;
   final FirebaseMessaging? _providedMessaging;
+  final bool _isIOS;
+  final Duration _retryDelay;
   FirebaseMessaging get _messaging =>
       _providedMessaging ?? FirebaseMessaging.instance;
   bool _ready = false;
@@ -92,6 +98,10 @@ class PushNotificationService extends ChangeNotifier {
     }
   }
 
+  /// Tests run without Firebase.initializeApp, which [start] would call.
+  @visibleForTesting
+  void markReady() => _ready = true;
+
   void clearLocalUser() {
     _userGeneration++;
     _authenticated = false;
@@ -128,11 +138,40 @@ class PushNotificationService extends ChangeNotifier {
         sound: true,
       );
       if (_registrationId != null) await _upload(_registrationId!);
-      await _messaging.register();
+      await _register();
     } catch (error, stackTrace) {
       // A missing Play Services/APNs setup must not block normal app use.
       debugPrint('Firebase push registration failed: $error');
       debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  /// On iOS, FCM registers only once APNs has handed the app its device
+  /// token, which arrives asynchronously after the permission prompt. Calling
+  /// register() before that fails, so wait for the token, and retry a failed
+  /// registration a few times instead of giving up for the whole session.
+  Future<void> _register() async {
+    final generation = _userGeneration;
+    Object? lastError;
+    for (var attempt = 0; attempt < 5; attempt++) {
+      if (!_authenticated || generation != _userGeneration) return;
+      if (_isIOS) await _waitForApnsToken();
+      try {
+        await _messaging.register();
+        return;
+      } catch (error) {
+        lastError = error;
+        await Future<void>.delayed(_retryDelay * (attempt + 1) * 2);
+      }
+    }
+    if (lastError != null) throw lastError;
+  }
+
+  Future<void> _waitForApnsToken() async {
+    for (var i = 0; i < 20; i++) {
+      final token = await _messaging.getAPNSToken();
+      if (token != null && token.isNotEmpty) return;
+      await Future<void>.delayed(_retryDelay);
     }
   }
 
@@ -167,7 +206,7 @@ class PushNotificationService extends ChangeNotifier {
     try {
       await _repository.registerPush(
         firebaseInstallationId: registrationId,
-        platform: Platform.isIOS ? 'IOS' : 'ANDROID',
+        platform: _isIOS ? 'IOS' : 'ANDROID',
       );
     } catch (error, stackTrace) {
       // FCM retries registration on later app starts; notification setup must
